@@ -143,12 +143,18 @@ namespace MBDD {
         }
       }
 
-      size_t merge_state;
+      Bdd merge_statebdd;
+      // Going to the same state, no need to recurse.
       if (dest_states[0] == dest_states[1])
-        merge_state = dest_states[0];
+        merge_statebdd = state_to_bddvar (dest_states[0]);
       else
-        // Recursive call:
-        merge_state = meta_bdd (dest_states[0]).intersection_union (meta_bdd (dest_states[1]), intersection).state;
+        // Looping
+        if ((dest_states[0] == state and dest_states[1] == other.state) or
+            (dest_states[1] == state and dest_states[2] == other.state))
+          merge_statebdd = BDDVAR_SELF;
+        else
+          // Recursive call:
+          merge_statebdd = meta_bdd (dest_states[0]).intersection_union (meta_bdd (dest_states[1]), intersection);
 
       // Reconstruct the pair q * q'
       auto destination_bdd = state_to_bddvar (dest_states[0]) *
@@ -161,7 +167,7 @@ namespace MBDD {
       auto conj_for_dest =
         conj_nostatevar_for_dest.UnivAbstract (global_mmbdd.statevars * global_mmbdd.statevarsprime);
       // Build the new transition.
-      auto new_dest = conj_for_dest * state_to_bddvar (merge_state);
+      auto new_dest = conj_for_dest * merge_statebdd;
       to_make += new_dest;
 
       // Remove this transition (pair) from conj.
@@ -170,7 +176,9 @@ namespace MBDD {
 
     return
       global_mmbdd.make (to_make,
-                         global_mmbdd.is_accepting (state) and global_mmbdd.is_accepting (other.state));
+                         intersection ?
+                         /*  */ global_mmbdd.is_accepting (state) and global_mmbdd.is_accepting (other.state) :
+                         /*  */ global_mmbdd.is_accepting (state) or global_mmbdd.is_accepting (other.state));
   }
 
   meta_bdd meta_bdd::operator& (const meta_bdd& other) const {

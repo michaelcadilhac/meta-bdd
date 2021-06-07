@@ -2,7 +2,6 @@
 
 using namespace sylvan;
 
-
 auto flat_automaton (std::span<const Bdd> w) {
   assert (w.size () > 0);
   if (w.size () == 1) // End of the list.
@@ -84,6 +83,10 @@ int main () {
   assert (MBDD::empty () == (q5 & MBDD::empty ()));
 
   assert ((q4 & q) == MBDD::empty ());
+
+  auto q5p = MBDD::make (x0 * q5 + !x0 * MBDD::self (), false);
+  auto q5pp = MBDD::make (x0 * q5 + x1 * q2 + !x0 * MBDD::self (), false);
+  assert ((q5p & q5pp) != q5);
 
   auto q6 = MBDD::make (!(x0 * !x1) * MBDD::full (), false);
   auto q7 = MBDD::make (MBDD::full (), false);

@@ -150,10 +150,6 @@ namespace MBDD {
 
       size_t successor (size_t state, const Bdd& l) const {
         auto t = project_to_statevars (delta[state] * l);
-        if (t.isZero ())
-          return STATE_EMPTY;
-        if (t.isOne ())
-          return STATE_FULL;
         assert (t.Then ().isOne () and t.Else ().isZero ()); // Assert it's a single state.
         auto var = t.TopVar ();
         if (var == VARNUM_SELF)
