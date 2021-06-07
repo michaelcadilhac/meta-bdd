@@ -1,0 +1,5 @@
+[wrap-file]
+directory = sylvan-1.6.0
+source_url = https://github.com/trolando/sylvan/archive/refs/tags/v1.6.0.tar.gz
+source_filename = v1.6.0.tar.gz
+source_hash = 902da5b04b571f8e2388d97cb134bcd62067ade7b8c6016cb35d46c0dde11651
