@@ -27,9 +27,22 @@ int main () {
   auto x0 = Bdd::bddVar (0),
     x1 = Bdd::bddVar (1);
 
+  auto qfull = MBDD::make (x0 * MBDD::self () + !x0 * MBDD::full (), true);
+  assert (qfull == MBDD::full ());
+
+  auto qempty = MBDD::make ((x0 * x1) * MBDD::empty () + !(x0 * x1) * MBDD::self (), false);
+  assert (qempty == MBDD::empty ());
+
+  assert (MBDD::make (MBDD::full (), true) == MBDD::full ());
+  assert (MBDD::make (MBDD::self (), true) == MBDD::full ());
+  assert (MBDD::make (MBDD::empty (), false) == MBDD::empty ());
+  assert (MBDD::make (MBDD::self (), false) == MBDD::empty ());
+
   auto q = MBDD::make ((x0 * !x1) * MBDD::full (), false);
 
   std::cout << q;
+  std::cout << "q accepts " << q.one_word ()
+            << " and rejects " << q.one_word (false) << std::endl;
 
   assert (q.accepts ({ x0 * !x1 }));
   assert (q.accepts ({ x0 * !x1, x0 * x1, !x1 }));
@@ -69,6 +82,9 @@ int main () {
 
   auto q4 = flat_automaton ({Bdd::bddZero (), !x0, !x1, x1, !x1, x1, Bdd::bddZero ()});
 
+  std::cout << "q4 accepts " << q4.one_word ()
+            << " and rejects " << q4.one_word (false) << std::endl;
+
   assert (q4.accepts ( { !x0, x1, x1 } ));
 
   assert (not q4.accepts ( { x0, !x0, !x1, x1, x1 } ));
@@ -84,13 +100,25 @@ int main () {
 
   assert ((q4 & q) == MBDD::empty ());
 
-  auto q5p = MBDD::make (x0 * q5 + !x0 * MBDD::self (), false);
-  auto q5pp = MBDD::make (x0 * q5 + x1 * q2 + !x0 * MBDD::self (), false);
-  assert ((q5p & q5pp) != q5);
+  auto q5p = MBDD::make (x0 * MBDD::full () + !x0 * MBDD::self (), false);
+  auto q5pp = MBDD::make (x0 * MBDD::full () + x1 * q2 + !x0 * MBDD::self (), false);
+  auto q5pi = q5p & q5pp;
+  std::cout << "q5pi: " << q5pi;
 
   auto q6 = MBDD::make (!(x0 * !x1) * MBDD::full (), false);
   auto q7 = MBDD::make (MBDD::full (), false);
 
   assert ((q | q6) == q7);
+
+  // Print a word per state
+  for (auto&& state : MBDD::global_mmbdd) {
+    std::cout << "State";
+    if (state != MBDD::empty ())
+      std::cout << " accepts [" << state.one_word () << "]";
+    if (state != MBDD::full ())
+      std::cout << " rejects [" <<  state.one_word (false) << "]";
+    std::cout << std::endl;
+  }
+
   sylvan_quit();
 }

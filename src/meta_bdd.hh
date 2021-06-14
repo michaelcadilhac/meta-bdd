@@ -68,6 +68,9 @@ namespace MBDD {
       meta_bdd (size_t state) : state (state) {}
       bool accepts (std::span<const Bdd> w) const;
       bool accepts (std::initializer_list<Bdd> w) const { return accepts (std::span (w)); }
+
+      std::vector<Bdd> one_word (bool accepted = true) const;
+
       meta_bdd one_step (const Bdd& l) const;
 
       operator Bdd () const {
@@ -100,11 +103,60 @@ namespace MBDD {
         delta[STATE_EMPTY] = BDDVAR_EMPTY;
         accepting_states.insert (STATE_FULL);
 
-        trans_to_state[ACC][BDDVAR_FULL.GetBDD ()] = STATE_FULL;
-        trans_to_state[ACC][BDDVAR_SELF.GetBDD ()] = STATE_FULL;
+        trans_to_state_noself[ACC][BDDVAR_FULL.GetBDD ()] = STATE_FULL;
+        trans_to_state_self[ACC][BDDVAR_SELF.GetBDD ()] = STATE_FULL;
 
-        trans_to_state[REJ][BDDVAR_EMPTY.GetBDD ()] = STATE_EMPTY;
-        trans_to_state[REJ][BDDVAR_SELF.GetBDD ()] = STATE_EMPTY;
+        trans_to_state_noself[REJ][BDDVAR_EMPTY.GetBDD ()] = STATE_EMPTY;
+        trans_to_state_self[REJ][BDDVAR_SELF.GetBDD ()] = STATE_EMPTY;
+      }
+
+      struct iterator {
+          iterator (bool end) : state { end ? -1u : 0} {}
+          iterator (size_t state) : state { state } {}
+          bool operator== (const iterator&) const = default;
+          bool operator!= (const iterator&) const = default;
+          auto operator++ ();
+          auto operator* () const { return meta_bdd (state); }
+        private:
+          size_t state;
+      };
+
+      const auto begin () const { return iterator (false); }
+      const auto end () const { return iterator (true); }
+
+      auto find (Bdd trans, bool is_accepting) const {
+        auto x = Bdd (sylvan_project (trans.GetBDD (), (statevars * BDDVAR_SELF).GetBDD ()));
+        auto dests = BddSet (x.Support ());
+
+#define SEARCH_IN(map, t) do {                                          \
+          auto search = map.find (t.GetBDD ());                         \
+          if (search != map.end ()) return iterator (search->second);   \
+        } while (0)
+
+        if (not dests.contains (VARNUM_SELF)) {
+          SEARCH_IN (trans_to_state_noself[is_accepting], trans);
+          return iterator (true);
+        }
+        // There's a self in destination.  First try to see if it is literally in trans_to_state_self.
+        SEARCH_IN (trans_to_state_self[is_accepting], trans);
+
+        do {
+          auto var = dests.TopVar ();
+          dests = dests.Next ();
+
+          if (var == VARNUM_SELF)
+            continue;
+
+          // Self can be replaced by any destination that has the same acceptance.
+          if (accepting_states.contains (varnum_to_state (var)) != is_accepting)
+            continue;
+
+          auto map_self = BddMap (VARNUM_SELF, Bdd::bddVar (var));
+          SEARCH_IN (trans_to_state_noself[is_accepting], trans.Compose (map_self));
+        } while (not dests.isEmpty ());
+
+        return iterator (true);
+#undef SEARCH_IN
       }
 
       meta_bdd make (Bdd trans, bool is_accepting) {
@@ -113,15 +165,18 @@ namespace MBDD {
         if (covered_labels != Bdd::bddOne ())
           trans += BDDVAR_EMPTY * !covered_labels;
 
-        auto search = trans_to_state[is_accepting].find (trans.GetBDD ());
-        if (search != trans_to_state[is_accepting].end ())
-          return meta_bdd (search->second);
+        auto search = find (trans, is_accepting);
+        if (search != end ())
+          return *search;
 
-        delta.emplace_back (trans);
-        auto state = delta.size () - 1;
-        trans_to_state[is_accepting][trans.GetBDD ()] = state;
-        // Another way to say it is to specify SELF to state:
-        trans_to_state[is_accepting][self_to_state (trans, state).GetBDD ()] = state;
+        auto state = delta.size ();
+
+        auto trans_noself = self_to_state (trans, state);
+        delta.emplace_back (trans_noself);
+
+        trans_to_state_self[is_accepting][trans.GetBDD ()] = state;
+        trans_to_state_noself[is_accepting][trans_noself.GetBDD ()] = state;
+
         if (is_accepting)
           accepting_states.insert (state);
 
@@ -151,9 +206,6 @@ namespace MBDD {
       size_t successor (size_t state, const Bdd& l) const {
         auto t = project_to_statevars (delta[state] * l);
         assert (t.Then ().isOne () and t.Else ().isZero ()); // Assert it's a single state.
-        auto var = t.TopVar ();
-        if (var == VARNUM_SELF)
-          return state;
         return varnum_to_state (t.TopVar ());
       }
 
@@ -161,7 +213,7 @@ namespace MBDD {
 
       std::vector<Bdd> delta;
       std::set<size_t> accepting_states;
-      std::map<BDD, size_t> trans_to_state[2];
+      std::map<BDD, size_t> trans_to_state_self[2], trans_to_state_noself[2];
       enum {
         ACC = true, REJ = false
       };
@@ -171,18 +223,9 @@ namespace MBDD {
 
   extern master_meta_bdd global_mmbdd;
 
-  inline bool meta_bdd::accepts (std::span<const Bdd> w) const {
-    auto cur_state = state;
-    for (auto&& l : w) {
-      cur_state = global_mmbdd.successor (cur_state, l);
-      if (cur_state == STATE_FULL) // Optim.
-        return true;
-    }
-    return global_mmbdd.is_accepting (cur_state);
-  }
-
-  inline meta_bdd meta_bdd::one_step (const Bdd& l) const {
-    return meta_bdd (global_mmbdd.successor (state, l));
+  /////////////////////////////////////////////////////////////// User interface
+  inline void init () {
+    global_mmbdd.init ();
   }
 
   inline meta_bdd full () {
@@ -200,4 +243,10 @@ namespace MBDD {
   inline meta_bdd make (Bdd trans, bool is_accepting) {
     return global_mmbdd.make (trans, is_accepting);
   }
-};
+}
+
+namespace std {
+  std::ostream& operator<< (std::ostream& os, const std::vector<sylvan::Bdd>& w);
+}
+
+#include "meta_bdd.hxx"
