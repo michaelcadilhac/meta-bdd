@@ -7,8 +7,15 @@
 #include <set>
 #include <vector>
 #include <map>
+#include <functional>
 
 #include <iostream>
+
+// Helper pretty printing.
+namespace std {
+  std::ostream& operator<< (std::ostream& os, const sylvan::Bdd& w);
+  std::ostream& operator<< (std::ostream& os, const std::vector<sylvan::Bdd>& w);
+}
 
 
 namespace MBDD {
@@ -69,6 +76,10 @@ namespace MBDD {
       bool accepts (std::span<const Bdd> w) const;
       bool accepts (std::initializer_list<Bdd> w) const { return accepts (std::span (w)); }
 
+      template <typename T>
+      bool rejects (T&& t) const { return not accepts (std::forward<T> (t)); }
+      bool rejects (std::initializer_list<Bdd> w) const { return not accepts (w); }
+
       std::vector<Bdd> one_word (bool accepted = true) const;
 
       meta_bdd one_step (const Bdd& l) const;
@@ -82,10 +93,27 @@ namespace MBDD {
       meta_bdd operator& (const meta_bdd& other) const;
       meta_bdd operator| (const meta_bdd& other) const;
 
+      meta_bdd transduct (const meta_bdd& other,
+                          std::span<const Bdd> output_vars, std::span<const Bdd> to_vars) const;
+
+      meta_bdd transduct (const meta_bdd& other,
+                          std::initializer_list<const Bdd> output_vars,
+                          std::initializer_list<const Bdd> to_vars) const {
+        return transduct (other, std::span (output_vars), std::span (to_vars));
+      }
+
+      template <typename Map>
+      meta_bdd apply (Map map) const;
+
     private:
-      const size_t state;
-      meta_bdd intersection_union (const meta_bdd& other, bool intersection) const;
+      size_t state;
+
+      template <typename Map = std::identity>
+      meta_bdd intersection_union (const meta_bdd& other, bool intersection,
+                                   Map map = {}) const;
+
       friend std::ostream& operator<< (std::ostream& os, const meta_bdd& b);
+      void print (std::ostream& os, std::set<size_t>& already_printed) const;
   };
 
   class master_meta_bdd {
@@ -205,7 +233,16 @@ namespace MBDD {
 
       size_t successor (size_t state, const Bdd& l) const {
         auto t = project_to_statevars (delta[state] * l);
-        assert (t.Then ().isOne () and t.Else ().isZero ()); // Assert it's a single state.
+        assert ([&] () {
+          if (t.isTerminal () or not (t.Then ().isOne () and t.Else ().isZero ())) {
+            std::cout << "label: " << delta[state]
+                      << ", letter: " << l
+                      << ", combine to: " << delta[state] * l
+                      << ", which is not valid.\n";
+            return false;
+          }
+          return true;
+        } ());
         return varnum_to_state (t.TopVar ());
       }
 
@@ -243,10 +280,6 @@ namespace MBDD {
   inline meta_bdd make (Bdd trans, bool is_accepting) {
     return global_mmbdd.make (trans, is_accepting);
   }
-}
-
-namespace std {
-  std::ostream& operator<< (std::ostream& os, const std::vector<sylvan::Bdd>& w);
 }
 
 #include "meta_bdd.hxx"

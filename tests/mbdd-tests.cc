@@ -120,5 +120,49 @@ int main () {
     std::cout << std::endl;
   }
 
+  // Transductions
+  std::cout << "TRANSDUCTIONS." << std::endl;
+
+  auto x2 = Bdd::bddVar (2), x3 = Bdd::bddVar (3);
+  auto ttr = MBDD::make (x0 * x2 * MBDD::self () + !x0 * !x2 * MBDD::self (), true);
+  auto qq8 = MBDD::make (x0 * MBDD::self () + !x0 * MBDD::empty (), true);
+
+  auto res = qq8.transduct (ttr, {x2}, {x2});
+  std::cout << "only x2*:" << qq8;
+  assert (res.accepts ({x2, x2}));
+  assert (not res.accepts ({x2, !x2}));
+
+  // Simple transduction
+  auto tr = MBDD::make  ((x0 * x1) * x2 * !x3 * MBDD::self () +
+                        !(x0 * x1) * !x2 * x3 * MBDD::self (), true);
+
+  auto q8 = MBDD::make (x0 * x1 * MBDD::empty () + !(x0 * x1) * MBDD::full (), false);
+
+  std::cout << q8;
+  std::cout << "AND" << (q8 & tr) << "END" << std::endl;
+
+  auto comp = q8.transduct (tr, {x2, x3}, {x0, x1});
+
+  std::cout << comp;
+  assert (comp.accepts ({x3 * !x2}));
+  assert (not comp.accepts ({x2 * !x3}));
+
+  auto comp2 = q8.transduct (ttr, {x1, x2}, {x1, x2});
+  std::cout << "COMP2:" << comp2;
+  assert (comp2.accepts ({!x2 * x1}));
+  assert (comp2.rejects ({x1 * x2}));
+
+  auto comp3 = q8.transduct (ttr, {x1, x2}, {x0, x1});
+
+  std::cout << "COMP3:" << comp3;
+
+  {
+    BddMap m;
+    m.put (x0.TopVar (), x1);
+    m.put (x1.TopVar (), x2);
+    auto mod = comp3.apply ([&] (Bdd b) { return b.Compose (m); });
+    assert (mod == comp2);
+  }
+
   sylvan_quit();
 }

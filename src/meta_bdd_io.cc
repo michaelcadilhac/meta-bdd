@@ -62,32 +62,44 @@ namespace MBDD {
   }
 
   std::ostream& operator<< (std::ostream& os, const meta_bdd& b) {
+    std::set<size_t> already_printed = {};
+    b.print (os, already_printed);
+    return os;
+  }
+
+  void meta_bdd::print (std::ostream& os, std::set<size_t>& already_printed) const {
     std::set<size_t> successors;
 
-    os << b.state;
+    os << state;
+    already_printed.insert (state);
 
-    auto trans = global_mmbdd.delta[b.state];
 
-    if (global_mmbdd.is_accepting (b.state))
+    auto trans = global_mmbdd.delta[state];
+
+    if (global_mmbdd.is_accepting (state))
       os << "(acc)";
 
     os << ": ";
 
-    print_bdd (trans, os, [&successors] (size_t varnum) {
-      if (is_varnumstate (varnum))
-        successors.insert (varnum_to_state (varnum));
+    print_bdd (trans, os, [&successors, &already_printed] (size_t varnum) {
+      if (is_varnumstate (varnum)) {
+        auto succ = varnum_to_state (varnum);
+        if (not already_printed.contains (succ))
+          successors.insert (succ);
+      }
       return varnum_to_name_state_aware (varnum);
     });
 
     os << "\n";
 
-    for (auto&& state : successors)
-      if (state != b.state)
-        os << meta_bdd (state);
-
-    return os;
+    for (auto&& succ_state : successors)
+      meta_bdd (succ_state).print (os, already_printed);
   }
 
+}
+std::ostream& std::operator<< (std::ostream& os, const sylvan::Bdd& l) {
+  MBDD::print_bdd (l, os);
+  return os;
 }
 
 std::ostream& std::operator<< (std::ostream& os, const std::vector<sylvan::Bdd>& w) {
@@ -97,7 +109,7 @@ std::ostream& std::operator<< (std::ostream& os, const std::vector<sylvan::Bdd>&
     if (not first)
       os << ", ";
     first = false;
-    MBDD::print_bdd (l, os);
+    os << l;
   }
   return os;
 }

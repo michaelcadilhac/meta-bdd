@@ -1,0 +1,7 @@
+https://github.com/blondimi/qcover/tree/master/stable/benchmarks 
+
+https://teaching.model.in.tum.de/2020ws/afl/autoskript-with-solutions.pdf
+(p.151 transductions)
+http://info.usherbrooke.ca/mblondin/cours/igl752_a20/notes.pdf 
+(p. 102)
+
