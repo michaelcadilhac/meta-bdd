@@ -14,6 +14,16 @@ auto flat_automaton (std::initializer_list<Bdd> w) {
   return flat_automaton (std::span (w));
 }
 
+static bool global_res = true;
+
+#define test(T) do {                                                    \
+    bool __res = (T);                                                   \
+    std::cout << (__res ? "[PASS] " : "[FAIL] ")                        \
+              << __FILE__ << ":" << __LINE__ << ": " << #T << std::endl; \
+    global_res &= __res;                                               \
+  } while (0)
+
+
 int main () {
   // Initialize sylvan
   lace_start(0, 0);
@@ -28,15 +38,15 @@ int main () {
     x1 = Bdd::bddVar (1);
 
   auto qfull = MBDD::make (x0 * MBDD::self () + !x0 * MBDD::full (), true);
-  assert (qfull == MBDD::full ());
+  test (qfull == MBDD::full ());
 
   auto qempty = MBDD::make ((x0 * x1) * MBDD::empty () + !(x0 * x1) * MBDD::self (), false);
-  assert (qempty == MBDD::empty ());
+  test (qempty == MBDD::empty ());
 
-  assert (MBDD::make (MBDD::full (), true) == MBDD::full ());
-  assert (MBDD::make (MBDD::self (), true) == MBDD::full ());
-  assert (MBDD::make (MBDD::empty (), false) == MBDD::empty ());
-  assert (MBDD::make (MBDD::self (), false) == MBDD::empty ());
+  test (MBDD::make (MBDD::full (), true) == MBDD::full ());
+  test (MBDD::make (MBDD::self (), true) == MBDD::full ());
+  test (MBDD::make (MBDD::empty (), false) == MBDD::empty ());
+  test (MBDD::make (MBDD::self (), false) == MBDD::empty ());
 
   auto q = MBDD::make ((x0 * !x1) * MBDD::full (), false);
 
@@ -44,61 +54,61 @@ int main () {
   std::cout << "q accepts " << q.one_word ()
             << " and rejects " << q.one_word (false) << std::endl;
 
-  assert (q.accepts ({ x0 * !x1 }));
-  assert (q.accepts ({ x0 * !x1, x0 * x1, !x1 }));
-  assert (not q.accepts ({ !x0 * x1 }));
-  assert (not q.accepts ({ x0 * x1, x0 * x1, !x1 }));
+  test (q.accepts ({ x0 * !x1 }));
+  test (q.accepts ({ x0 * !x1, x0 * x1, !x1 }));
+  test (not q.accepts ({ !x0 * x1 }));
+  test (not q.accepts ({ x0 * x1, x0 * x1, !x1 }));
 
-  assert (MBDD::full ().accepts ({ x0, x0, x0, x0 }));
-  assert (not MBDD::empty ().accepts ({ x0, x0, x0, x0 }));
+  test (MBDD::full ().accepts ({ x0, x0, x0, x0 }));
+  test (not MBDD::empty ().accepts ({ x0, x0, x0, x0 }));
 
   auto q1 = flat_automaton ({x0, !x0, Bdd::bddZero (), x1, x1});
   std::cout << q1;
 
-  assert (q1.accepts ({ !x0 * x1, x1 }));
-  assert (q1.accepts (
+  test (q1.accepts ({ !x0 * x1, x1 }));
+  test (q1.accepts (
             {   x0 * !x1, x0 * x1, !x0 * x1, // First state
                 x1 * x0, // Second state
                 x1 * x0, x1 * !x0, x1 * x0
             }));
-  assert (not q1.accepts (
+  test (not q1.accepts (
             {   !x0 * !x1,
                 !x0 * !x1
             }));
 
   auto q2 = flat_automaton ({x0, !x0, Bdd::bddZero (), x1, x1});
-  assert (q1 == q2);
-  assert (q1.one_step (!x0) == q2.one_step (!x0));
+  test (q1 == q2);
+  test (q1.one_step (!x0) == q2.one_step (!x0));
 
   auto q3 = flat_automaton ({x0, !x0, (x0 * x1) | (!x0 * !x1) | (x0 * !x1) | (!x0 * x1)});
-  assert (q3.one_step (!x0) == MBDD::full ());
+  test (q3.one_step (!x0) == MBDD::full ());
 
   std::cout << "q2\n" << q2;
   std::cout << "q1 & q2\n" << (q1 & q2);
 
-  assert ((q1 & q2) == q2);
-  assert ((q1 & q1) == q1);
-  assert ((q1 & q2) == (q2 & q1));
+  test ((q1 & q2) == q2);
+  test ((q1 & q1) == q1);
+  test ((q1 & q2) == (q2 & q1));
 
   auto q4 = flat_automaton ({Bdd::bddZero (), !x0, !x1, x1, !x1, x1, Bdd::bddZero ()});
 
   std::cout << "q4 accepts " << q4.one_word ()
             << " and rejects " << q4.one_word (false) << std::endl;
 
-  assert (q4.accepts ( { !x0, x1, x1 } ));
+  test (q4.accepts ( { !x0, x1, x1 } ));
 
-  assert (not q4.accepts ( { x0, !x0, !x1, x1, x1 } ));
+  test (not q4.accepts ( { x0, !x0, !x1, x1, x1 } ));
 
   auto q5 = q1 & q4;
 
-  assert (q5.accepts ({ !x0, x1, x1 }));
-  assert (not q5.accepts ({ !x0 * x1, x1 })); // in q1 not q4
-  assert (not q5.accepts ({ !x0 * x1, !x1 * x0, x1, x1 })); // in q4 not q1
+  test (q5.accepts ({ !x0, x1, x1 }));
+  test (not q5.accepts ({ !x0 * x1, x1 })); // in q1 not q4
+  test (not q5.accepts ({ !x0 * x1, !x1 * x0, x1, x1 })); // in q4 not q1
 
-  assert (q5 == (q5 & MBDD::full ()));
-  assert (MBDD::empty () == (q5 & MBDD::empty ()));
+  test (q5 == (q5 & MBDD::full ()));
+  test (MBDD::empty () == (q5 & MBDD::empty ()));
 
-  assert ((q4 & q) == MBDD::empty ());
+  test ((q4 & q) == MBDD::empty ());
 
   auto q5p = MBDD::make (x0 * MBDD::full () + !x0 * MBDD::self (), false);
   auto q5pp = MBDD::make (x0 * MBDD::full () + x1 * q2 + !x0 * MBDD::self (), false);
@@ -108,7 +118,7 @@ int main () {
   auto q6 = MBDD::make (!(x0 * !x1) * MBDD::full (), false);
   auto q7 = MBDD::make (MBDD::full (), false);
 
-  assert ((q | q6) == q7);
+  test ((q | q6) == q7);
 
   // Print a word per state
   for (auto&& state : MBDD::global_mmbdd) {
@@ -129,8 +139,8 @@ int main () {
 
   auto res = qq8.transduct (ttr, {x2}, {x2});
   std::cout << "only x2*:" << qq8;
-  assert (res.accepts ({x2, x2}));
-  assert (not res.accepts ({x2, !x2}));
+  test (res.accepts ({x2, x2}));
+  test (not res.accepts ({x2, !x2}));
 
   // Simple transduction
   auto tr = MBDD::make  ((x0 * x1) * x2 * !x3 * MBDD::self () +
@@ -144,13 +154,13 @@ int main () {
   auto comp = q8.transduct (tr, {x2, x3}, {x0, x1});
 
   std::cout << comp;
-  assert (comp.accepts ({x3 * !x2}));
-  assert (not comp.accepts ({x2 * !x3}));
+  test (comp.accepts ({x3 * !x2}));
+  test (not comp.accepts ({x2 * !x3}));
 
   auto comp2 = q8.transduct (ttr, {x1, x2}, {x1, x2});
   std::cout << "COMP2:" << comp2;
-  assert (comp2.accepts ({!x2 * x1}));
-  assert (comp2.rejects ({x1 * x2}));
+  test (comp2.accepts ({!x2 * x1}));
+  test (comp2.rejects ({x1 * x2}));
 
   auto comp3 = q8.transduct (ttr, {x1, x2}, {x0, x1});
 
@@ -161,8 +171,10 @@ int main () {
     m.put (x0.TopVar (), x1);
     m.put (x1.TopVar (), x2);
     auto mod = comp3.apply ([&] (Bdd b) { return b.Compose (m); });
-    assert (mod == comp2);
+    test (mod == comp2);
   }
 
   sylvan_quit();
+
+  return global_res;
 }
