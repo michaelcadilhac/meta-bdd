@@ -36,17 +36,6 @@ namespace MBDD {
     return sylvan::Bdd::bddVar (state_to_varnum (state, p));
   }
 
-  inline constexpr bool is_varnumstate (size_t varnum, Prime p = Prime::dontcare) {
-    if (varnum >> 22 != 1) return false;
-    if (p == Prime::dontcare) return true;
-    return (p == Prime::no) ^ (varnum & 1);
-  }
-
-  inline constexpr auto varnum_to_state (size_t varnum) {
-    assert (is_varnumstate (varnum));
-    return (varnum ^ (1 << 22)) >> 1;
-  }
-
   static const size_t VARNUM_SELF = state_to_varnum (0) - 1;
 #define BDDVAR_SELF (Bdd::bddVar (VARNUM_SELF))
 
@@ -64,6 +53,18 @@ namespace MBDD {
 #define VARNUM_EMPTY_PRIME (state_to_varnum (STATE_EMPTY, Prime::yes))
 #define BDDVAR_EMPTY_PRIME (Bdd::bddVar (VARNUM_EMPTY_PRIME))
 
+  // Note: VARNUM_SELF is not considered a varnumstate.
+  inline constexpr bool is_varnumstate (size_t varnum, Prime p = Prime::dontcare) {
+    if (varnum >> 22 != 1) return false;
+    if (p == Prime::dontcare) return true;
+    return (p == Prime::no) ^ (varnum & 1);
+  }
+
+  inline constexpr auto varnum_to_state (size_t varnum) {
+    assert (is_varnumstate (varnum));
+    return (varnum ^ (1 << 22)) >> 1;
+  }
+
   class meta_bdd;
   class master_meta_bdd;
   std::ostream& operator<< (std::ostream& os, const meta_bdd& b);
@@ -71,6 +72,7 @@ namespace MBDD {
   void init ();
 
   class meta_bdd {
+      friend master_meta_bdd;
     public:
       meta_bdd (size_t state) : state (state) {}
       bool accepts (std::span<const Bdd> w) const;
@@ -188,6 +190,14 @@ namespace MBDD {
       }
 
       meta_bdd make (Bdd trans, bool is_accepting) {
+        assert ([&] () {
+          if (is_trans_deterministic (trans))
+            return true;
+          std::cout << "Transition label " << trans
+                    << " is not deterministic." << std::endl;
+          return false;
+        } ());
+
         // Complete trans: make STATE_EMPTY explicit.
         auto covered_labels = trans.ExistAbstract (statevars);
         if (covered_labels != Bdd::bddOne ())
@@ -213,6 +223,8 @@ namespace MBDD {
         auto state_varnum_prime_bdd = state_to_bddvar (state, Prime::yes);
         statevarsprime *= state_varnum_prime_bdd;
         statevars_to_statevarsprime.put (state_varnum, state_varnum_prime_bdd);
+
+        check_consistency ();
 
         return meta_bdd (state);
       }
@@ -245,6 +257,9 @@ namespace MBDD {
         } ());
         return varnum_to_state (t.TopVar ());
       }
+
+      bool is_trans_deterministic (Bdd trans) const;
+      void check_consistency () const;
 
       friend std::ostream& operator<< (std::ostream& os, const meta_bdd& b);
 

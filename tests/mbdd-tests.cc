@@ -111,14 +111,16 @@ int main () {
   test ((q4 & q) == MBDD::empty ());
 
   auto q5p = MBDD::make (x0 * MBDD::full () + !x0 * MBDD::self (), false);
-  auto q5pp = MBDD::make (x0 * MBDD::full () + x1 * q2 + !x0 * MBDD::self (), false);
+  auto q5pp = MBDD::make (x0 * MBDD::full () + (x1 * !x0) * q2 + (!x1 * !x0) * MBDD::self (), false);
   auto q5pi = q5p & q5pp;
   std::cout << "q5pi: " << q5pi;
+  test (q5pi == (q5pp & q5p));
 
   auto q6 = MBDD::make (!(x0 * !x1) * MBDD::full (), false);
   auto q7 = MBDD::make (MBDD::full (), false);
 
   test ((q | q6) == q7);
+  test ((q | q6) == (q6 | q));
 
   // Print a word per state
   for (auto&& state : MBDD::global_mmbdd) {
@@ -154,8 +156,8 @@ int main () {
   auto comp = q8.transduct (tr, {x2, x3}, {x0, x1});
 
   std::cout << comp;
-  test (comp.accepts ({x3 * !x2}));
-  test (not comp.accepts ({x2 * !x3}));
+  test (comp.accepts ({!x0 * x1}));
+  test (not comp.accepts ({x0 * !x1}));
 
   auto comp2 = q8.transduct (ttr, {x1, x2}, {x1, x2});
   std::cout << "COMP2:" << comp2;
@@ -174,7 +176,23 @@ int main () {
     test (mod == comp2);
   }
 
+  // This one is not output deterministic, but is post-unambiguous
+  {
+    // The one T transition.
+    auto q = MBDD::make (MBDD::full (), false);
+
+    // Changing q to MBDD::self would make it post-ambiguous.
+    auto tr = MBDD::make ((x0 * x2 * x3 * q) +
+                          (!x0 * x1 * x2 * x3 + !x0 * !x1 * !x2 * x3) *
+                          MBDD::full (), false);
+
+    auto comp = q.transduct (tr, {x2, x3}, {x2, x3});
+
+    test (comp.accepts ({x3 * x2}));
+    test (comp.rejects ({!x2 * !x3}));
+  }
+
   sylvan_quit();
 
-  return global_res;
+  return global_res ? 0 : 1;
 }

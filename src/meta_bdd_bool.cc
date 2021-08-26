@@ -1,5 +1,6 @@
 #include <sstream>
 #include <iostream>
+#include <list>
 #include <set>
 
 #include "meta_bdd.hh"
@@ -40,7 +41,8 @@ namespace MBDD {
     auto conj = global_mmbdd.delta[state] *
       global_mmbdd.delta[other.state].Compose (global_mmbdd.statevars_to_statevarsprime);
 
-    auto to_make = Bdd::bddZero ();
+    auto to_make = std::list<std::pair<Bdd, size_t>> ();
+    auto all_labels = Bdd::bddZero ();
 
 #warning Another (better?) approach would be to project delta[state] over statevars, iterate over states, project to the nonstatevars over that state, make the and with delta[other.state], project over state, etc.
 
@@ -83,32 +85,71 @@ namespace MBDD {
       // expect this (transductions).
       if ((not intersection) or
           (intersection and dest_states[0] != STATE_EMPTY and dest_states[1] != STATE_EMPTY)) {
-        Bdd merge_statebdd;
+        size_t merge_state;
         // Going to the same state, no need to recurse if we're not changing labels
         if (dest_states[0] == dest_states[1]) {
           if (nomap)
-            merge_statebdd = state_to_bddvar (dest_states[0]);
+            merge_state = dest_states[0];
           else
-            merge_statebdd = meta_bdd (dest_states[0]).apply (map);
+            merge_state = meta_bdd (dest_states[0]).apply (map).state;
         }
         else
           // Looping
           if (((dest_states[0] == state and dest_states[1] == other.state) or
                (dest_states[1] == state and dest_states[0] == other.state)))
-            merge_statebdd = BDDVAR_SELF;
+            merge_state = -1u; // We use -1 to signal SELF.
           else
             // Recursive call:
-            merge_statebdd = meta_bdd (dest_states[0]).intersection_union (meta_bdd (dest_states[1]),
-                                                                           intersection, map);
+            merge_state =
+              meta_bdd (dest_states[0])
+              .intersection_union (meta_bdd (dest_states[1]),
+                                   intersection, map)
+              .state;
 
         // Build the new transition.
-        auto new_dest = map (conj_for_dest) * merge_statebdd;
-        to_make += new_dest;
+        auto this_label = map (conj_for_dest);
+        if (merge_state == -1u /* SELF */ or (all_labels & this_label).isZero ()) {
+          // If we reached here because we're self looping, check that we are
+          // indeed deterministic.  This is for transductions, and is guaranteed
+          // by post-unambiguity:
+          assert (((void) "Transduction is post-ambiguous.",
+                   (all_labels & this_label).isZero ()));
+          to_make.emplace_back (this_label, merge_state);
+        }
+        else {
+          // Remove the conflict
+          for (auto it = to_make.begin (); it != to_make.end (); ++it) {
+            auto conj = this_label & it->first;
+            if (not conj.isZero ()) {
+              // Because of transductions, it can happen that it->second is
+              // SELF, but this is ruled out by post-unambiguity.
+              assert (((void) "Transduction is post-ambiguous.",
+                       it->second != -1u));
+              auto union_merge_state =
+                /* union, no map, as this is after the map has been applied. */
+                (meta_bdd (merge_state) | meta_bdd (it->second)).state;
+              to_make.erase (it);
+              to_make.emplace_back (conj, union_merge_state);
+              conj = this_label & (!it->first);
+              if (not conj.isZero ())
+                to_make.emplace_back (conj, merge_state);
+              conj = (!this_label) & it->first;
+              if (not conj.isZero ())
+                to_make.emplace_back (conj, it->second);
+              break;
+            }
+          }
+        }
+        all_labels += this_label;
       }
     }
 
+    Bdd target = Bdd::bddZero ();
+    for (auto&& p : to_make)
+      target += p.first * (p.second == -1u ? BDDVAR_SELF : state_to_bddvar (p.second));
+
     return
-      global_mmbdd.make (to_make,
+      global_mmbdd.make (target,
                          intersection ?
                          /*  */ global_mmbdd.is_accepting (state) and global_mmbdd.is_accepting (other.state) :
                          /*  */ global_mmbdd.is_accepting (state) or global_mmbdd.is_accepting (other.state));
@@ -122,6 +163,7 @@ namespace MBDD {
     return intersection_union (other, false);
   }
 
+  /* Transduction is seen as an intersection with projection. */
   meta_bdd meta_bdd::transduct (const meta_bdd& other,
                                 std::span<const Bdd> output_vars,
                                 std::span<const Bdd> to_vars) const {

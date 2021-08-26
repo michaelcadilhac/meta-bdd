@@ -44,24 +44,7 @@ namespace MBDD {
       if (varnum_to_state (dests.TopVar ()) == state) // Self loop
         bddstate = BDDVAR_SELF;
       else
-        // xx
-
-      //   p           q
-      //   ->o ----  >o
-      //       l
-
-
-      // delta[p] = l & q | l' & q' | ...
-
-      //     q | q' | ... = delta[p].project (state variables)
-
-      //     l = delta[p] (q = 1) (q', ... = 0)
-
-      //     r = q.apply (map)
-
-      //     map (l) & r.
-
-      to_make += map (labels_to_state) * bddstate;
+        to_make += map (labels_to_state) * bddstate;
       dests = dests.Else ();
     }
     return global_mmbdd.make (to_make, global_mmbdd.is_accepting (state));
@@ -71,5 +54,39 @@ namespace MBDD {
     if (++state == global_mmbdd.delta.size ())
       state = -1u;
     return *this;
+  }
+
+  inline bool master_meta_bdd::is_trans_deterministic (Bdd trans) const {
+    // Frankly unsure what Bdd::operator< is computing, so use raw bdd
+    // type for set to sort.
+    std::set<BDD> labels;
+    auto state_statevars = project_to_statevars (trans);
+    while (not state_statevars.isZero ()) {
+      auto nextstate = state_statevars.TopVar ();
+      assert (nextstate == VARNUM_SELF or
+              is_varnumstate (nextstate));
+      // There can't be a conjunction of states.
+      assert (state_statevars.Then ().isOne ());
+      auto gotonextstate = (trans * Bdd (nextstate))
+        .ExistAbstract (state_statevars)
+        .UnivAbstract (statevars);
+      if (not labels.insert (gotonextstate.GetBDD ()).second)
+        return false;
+      state_statevars = state_statevars.Else ();
+    }
+
+    for (auto&& label : labels)
+      for (auto&& other_label : labels)
+        if ((label != other_label) and
+            not (Bdd (label) * Bdd (other_label)).isZero ())
+          return false;
+    return true;
+  }
+
+  inline void master_meta_bdd::check_consistency () const {
+    // Check that there are no valuation of the nonstate variables that lead to
+    // two states.
+    for (auto&& state : MBDD::global_mmbdd)
+      assert (is_trans_deterministic (global_mmbdd.delta[state.state]));
   }
 }

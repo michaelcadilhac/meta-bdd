@@ -19,6 +19,7 @@ class upset {
     }
 
     bool contains (std::span<const value_type> sv) const {
+      // Make a copy as we're going to shift all these values.
       std::vector<value_type> v (sv.begin (), sv.end ());
       std::vector<Bdd> w;
 
