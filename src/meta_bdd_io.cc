@@ -81,7 +81,9 @@ namespace MBDD {
 
     os << ": ";
 
-    print_bdd (trans, os, [&successors, &already_printed] (size_t varnum) {
+    // To prettify, remove the EMPTY state.
+    print_bdd (trans.Compose (BddMap (VARNUM_EMPTY, Bdd::bddZero ())),
+               os, [&successors, &already_printed] (size_t varnum) {
       if (is_varnumstate (varnum)) {
         auto succ = varnum_to_state (varnum);
         if (not already_printed.contains (succ))
