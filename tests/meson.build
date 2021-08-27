@@ -5,7 +5,7 @@ mbdd_exe = executable ('mbdd-tests', ['mbdd-tests.cc'],
 
 upset_exe = executable ('upset-tests', ['upset-tests.cc'],
                         include_directories : inc,
-                        link_with : mbdd_lib,
+                        link_with : [upset_lib, mbdd_lib],
                         dependencies : [sylvan_lib])
 
 test ('MBDD', mbdd_exe)

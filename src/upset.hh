@@ -6,6 +6,9 @@ class upset {
     using Bdd = sylvan::Bdd;
 
     using value_type = size_t;
+  private:
+    upset (const MBDD::meta_bdd& m, size_t d) : mbdd {m}, dim {d} {}
+
   public:
     upset (std::span<const value_type> v) : mbdd {MBDD::full ()}, dim {v.size ()} {
       for (size_t i = 0; i < dim; ++i)
@@ -14,8 +17,25 @@ class upset {
 
     upset (std::initializer_list<value_type> v) : upset (std::span (v)) {}
 
-    upset operator+ (std::span<const value_type> sv) const {
+    // upset operator+ (std::span<const value_type> sv) const {
+    //   return upset ();
+    // }
 
+    static MBDD::meta_bdd plus_transducer (std::span<const value_type> delta,
+                                           const std::vector<bool>& carries);
+
+    static inline auto plus_transducer (std::initializer_list<value_type> v) {
+      return plus_transducer (std::span (v), std::vector<bool> (v.size ()));
+    }
+
+    upset transduct (const MBDD::meta_bdd& trans) {
+      std::vector<Bdd> ins (dim), outs (dim);
+      for (size_t i = 0; i < dim; ++i) {
+        ins[i] = Bdd::bddVar (i);
+        outs[i] = Bdd::bddVar (i + dim);
+      }
+
+      return upset (mbdd.transduct (trans, outs, ins), dim);
     }
 
     bool contains (std::span<const value_type> sv) const {
@@ -48,7 +68,7 @@ class upset {
 
   private:
     MBDD::meta_bdd mbdd;
-    const size_t dim;
+    size_t dim;
 
     MBDD::meta_bdd up_mbdd_high_branch (value_type value, size_t dim) {
       if (value == 0)
