@@ -44,7 +44,9 @@ namespace MBDD {
       if (varnum_to_state (dests.TopVar ()) == state) // Self loop
         bddstate = BDDVAR_SELF;
       else
-        to_make += map (labels_to_state) * bddstate;
+        bddstate = meta_bdd (varnum_to_state (bddstate.TopVar ())).apply (map);
+
+      to_make += map (labels_to_state) * bddstate;
       dests = dests.Else ();
     }
     return global_mmbdd.make (to_make, global_mmbdd.is_accepting (state));

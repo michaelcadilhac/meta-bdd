@@ -1,4 +1,5 @@
 #include <meta_bdd.hh>
+#include "tests.hh"
 
 using namespace sylvan;
 
@@ -13,16 +14,6 @@ auto flat_automaton (std::span<const Bdd> w) {
 auto flat_automaton (std::initializer_list<Bdd> w) {
   return flat_automaton (std::span (w));
 }
-
-static bool global_res = true;
-
-#define test(T) do {                                                    \
-    bool __res = (T);                                                   \
-    std::cout << (__res ? "[PASS] " : "[FAIL] ")                        \
-              << __FILE__ << ":" << __LINE__ << ": " << #T << std::endl; \
-    global_res &= __res;                                               \
-  } while (0)
-
 
 int main () {
   // Initialize sylvan
@@ -190,6 +181,23 @@ int main () {
 
     test (comp.accepts ({x3 * x2}));
     test (comp.rejects ({!x2 * !x3}));
+  }
+
+  {
+    auto q1 = flat_automaton ({x0, !x0, Bdd::bddZero (), x1, x1});
+    auto q = q1.apply ([&] (const Bdd& b) {
+      return b.Compose (BddMap (x1.TopVar (), x2));
+    });
+    test (q.accepts ({ !x0 * x2, x2 }));
+    test (q.accepts (
+            {   x0 * !x2, x0 * x2, !x0 * x2, // First state
+                x2 * x0, // Second state
+                x2 * x0, x2 * !x0, x2 * x0
+            }));
+    test (not q.accepts (
+            {   !x0 * !x2,
+                !x0 * !x2
+            }));
   }
 
   sylvan_quit();
