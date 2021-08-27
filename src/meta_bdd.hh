@@ -74,6 +74,7 @@ namespace MBDD {
   class meta_bdd {
       friend master_meta_bdd;
     public:
+      meta_bdd () : state (STATE_EMPTY) {}
       meta_bdd (size_t state) : state (state) {}
       bool accepts (std::span<const Bdd> w) const;
       bool accepts (std::initializer_list<Bdd> w) const { return accepts (std::span (w)); }
