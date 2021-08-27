@@ -111,9 +111,9 @@ namespace MBDD {
     private:
       size_t state;
 
-      template <typename Map = std::identity>
+      template <typename Map = std::identity, typename Hash = size_t>
       meta_bdd intersection_union (const meta_bdd& other, bool intersection,
-                                   Map map = {}) const;
+                                   const Map& map = {}, const Hash& map_hash = 0) const;
 
       friend std::ostream& operator<< (std::ostream& os, const meta_bdd& b);
       void print (std::ostream& os, std::set<size_t>& already_printed) const;

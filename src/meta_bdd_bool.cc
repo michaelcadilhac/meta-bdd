@@ -1,6 +1,7 @@
 #include <sstream>
 #include <iostream>
 #include <list>
+#include <unordered_map>
 #include <set>
 
 #include "meta_bdd.hh"
@@ -8,15 +9,17 @@
 
 namespace MBDD {
 
-  static std::map<std::tuple<size_t, size_t, bool, void*>, size_t> iu_cache;
-
-  template <typename Map>
+  template <typename Map, typename Hash>
   meta_bdd meta_bdd::intersection_union (const meta_bdd& other, bool intersection,
-                                         Map map) const {
+                                         const Map& map, const Hash& map_hash) const {
+    typedef std::tuple<size_t, size_t, bool, Hash> tuple_t;
+    static std::map<tuple_t, size_t> iu_cache;
+
     size_t s1 = state, s2 = other.state;
     if (s1 > s2) { std::swap (s1, s2); }
-    auto cache_tuple = std::make_tuple (s1, s2, intersection, &map);
+    auto cache_tuple = std::make_tuple (s1, s2, intersection, map_hash);
     auto cached = iu_cache.find (cache_tuple);
+
     if (cached != iu_cache.end ())
       return cached->second;
 
@@ -195,6 +198,8 @@ namespace MBDD {
       other, true,
       [&bddoutputvars, &m] (const Bdd& b) {
         return Bdd (sylvan_project (b.GetBDD (), bddoutputvars.GetBDD ())).Compose (m);
-      });
+      },
+      *((size_t*) &m) // This is because BddMap doesn't expose the Bdd.
+      );
   }
 }
