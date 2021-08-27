@@ -8,33 +8,47 @@
 
 namespace MBDD {
 
+  static std::map<std::tuple<size_t, size_t, bool, void*>, size_t> iu_cache;
+
   template <typename Map>
   meta_bdd meta_bdd::intersection_union (const meta_bdd& other, bool intersection,
                                          Map map) const {
+    size_t s1 = state, s2 = other.state;
+    if (s1 > s2) { std::swap (s1, s2); }
+    auto cache_tuple = std::make_tuple (s1, s2, intersection, &map);
+    auto cached = iu_cache.find (cache_tuple);
+    if (cached != iu_cache.end ())
+      return cached->second;
+
+    auto cache = [&] (size_t s) {
+      iu_cache[cache_tuple] = s;
+      return s;
+    };
+
     constexpr bool nomap = std::is_same<Map, std::identity>::value;
 
     if (state == other.state)
-      return nomap ? state : apply (map);
+      return cache (nomap ? state : apply (map).state);
 
     // Note: A map cannot turn STATE_EMPTY into anything else, but it can turn
     // STATE_FULL into a new state.
     if (intersection) {
       if (state == STATE_EMPTY or other.state == STATE_EMPTY)
-        return STATE_EMPTY;
+        return cache (STATE_EMPTY);
       if (nomap) {
         if (state == STATE_FULL)
-          return other.state;
+          return cache (other.state);
         if (other.state == STATE_FULL)
-          return apply (map);
+          return cache (state);
       }
     }
     else {
       if (nomap and (state == STATE_FULL or other.state == STATE_FULL))
-        return STATE_FULL;
+        return cache (STATE_FULL);
       if (state == STATE_EMPTY)
-        return nomap ? other.state : other.apply (map);
+        return cache (nomap ? other.state : other.apply (map).state);
       if (other.state == STATE_EMPTY)
-        return nomap ? state : apply (map);
+        return cache (nomap ? state : apply (map).state);
     }
 
     // Compute the conjunction of deltas with the second primed.
@@ -148,11 +162,12 @@ namespace MBDD {
     for (auto&& p : to_make)
       target += p.first * (p.second == -1u ? BDDVAR_SELF : state_to_bddvar (p.second));
 
-    return
+    return cache (
       global_mmbdd.make (target,
                          intersection ?
                          /*  */ global_mmbdd.is_accepting (state) and global_mmbdd.is_accepting (other.state) :
-                         /*  */ global_mmbdd.is_accepting (state) or global_mmbdd.is_accepting (other.state));
+                         /*  */ global_mmbdd.is_accepting (state) or global_mmbdd.is_accepting (other.state)).state
+      );
   }
 
   meta_bdd meta_bdd::operator& (const meta_bdd& other) const {
