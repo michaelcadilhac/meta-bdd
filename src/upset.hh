@@ -17,26 +17,38 @@ class upset {
 
     upset (std::initializer_list<value_type> v) : upset (std::span (v)) {}
 
-    // upset operator+ (std::span<const value_type> sv) const {
-    //   return upset ();
-    // }
-
-    static MBDD::meta_bdd plus_transducer (std::span<const value_type> delta,
-                                           const std::vector<bool>& carries);
-
-    static inline auto plus_transducer (std::initializer_list<value_type> v) {
-      return plus_transducer (std::span (v), std::vector<bool> (v.size ()));
+    upset operator& (const upset& other) const {
+      assert (dim == other.dim);
+      return upset (mbdd & other.mbdd, dim);
     }
 
-    upset transduct (const MBDD::meta_bdd& trans) {
-      std::vector<Bdd> ins (dim), outs (dim);
-      for (size_t i = 0; i < dim; ++i) {
-        ins[i] = Bdd::bddVar (i);
-        outs[i] = Bdd::bddVar (i + dim);
+    upset& operator&= (const upset& other) { return ((*this) = (*this) & other); }
+
+    upset operator| (const upset& other) const {
+      assert (dim == other.dim);
+      return upset (mbdd | other.mbdd, dim);
+    }
+
+    upset& operator|= (const upset& other) { return ((*this) = (*this) | other); }
+
+    upset operator+ (std::span<const ssize_t> v) const {
+      std::vector<size_t> abs_v (v.size ());
+      std::vector<bool>   neg (v.size ());
+      size_t i = 0;
+      for (auto x : v) {
+        abs_v[i] = std::abs (x);
+        neg[i] = (x < 0);
+        ++i;
       }
 
-      return upset (mbdd.transduct (trans, outs, ins), dim);
+      auto trans = plus_transducer (abs_v, neg, std::vector<bool> (v.size ()));
+      return transduct (trans).full_zero_padded ();
     }
+
+    upset& operator+= (std::span<const ssize_t> v) { return ((*this) = (*this) + v); }
+    upset& operator+= (std::initializer_list<ssize_t> v) { return (operator+=) (std::span (v)); }
+
+    bool operator== (const upset& other) const = default;
 
     bool contains (std::span<const value_type> sv) const {
       // Make a copy as we're going to shift all these values.
@@ -61,6 +73,9 @@ class upset {
     bool contains (std::initializer_list<value_type> v) const {
       return contains (std::span (v));
     }
+
+    bool is_full () const { return (mbdd == MBDD::full ()); }
+    bool is_empty () const { return (mbdd == MBDD::empty ()); }
 
     MBDD::meta_bdd get_mbdd () const {
       return mbdd;
@@ -87,5 +102,30 @@ class upset {
         return MBDD::make (Bdd::bddVar (dim) * up_mbdd_high_branch (value >> 1, dim) +
                            !Bdd::bddVar (dim) * up_mbdd_low_branch (value >> 1, dim), false);
       return MBDD::make (up_mbdd_low_branch (value >> 1, dim), false);
+    }
+
+    static MBDD::meta_bdd full_zero_padded (const MBDD::meta_bdd& s, Bdd all_zero);
+
+    upset full_zero_padded () const {
+      Bdd all_zero = Bdd::bddOne ();
+
+      for (size_t i = 0; i < dim; ++i)
+        all_zero *= !Bdd::bddVar (i);
+
+      return upset (full_zero_padded (mbdd, all_zero), dim);
+    }
+
+    static MBDD::meta_bdd plus_transducer (const std::vector<size_t>& delta,
+                                           const std::vector<bool>& neg,
+                                           const std::vector<bool>& carries);
+
+    upset transduct (const MBDD::meta_bdd& trans) const {
+      std::vector<Bdd> ins (dim), outs (dim);
+      for (size_t i = 0; i < dim; ++i) {
+        ins[i] = Bdd::bddVar (i);
+        outs[i] = Bdd::bddVar (i + dim);
+      }
+
+      return upset (mbdd.transduct (trans, outs, ins), dim);
     }
 };
