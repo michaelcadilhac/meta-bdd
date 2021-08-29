@@ -15,6 +15,54 @@ namespace MBDD {
     return global_mmbdd.is_accepting (cur_state);
   }
 
+  class meta_bdd::neighbor_iterator {
+    public:
+      neighbor_iterator (Bdd dt) :
+        dt {dt},
+        // states is the OR of destination states.
+        states {dt.isZero () ? Bdd::bddZero () : global_mmbdd.project_to_statevars (dt)}
+      {
+        ++(*this);
+      }
+
+      neighbor_iterator& operator++ () {
+        if (states == Bdd::bddZero ()) {
+          state = 0;
+          label = Bdd::bddZero ();
+          return *this;
+        }
+
+        assert (states.Then ().isOne ());
+        assert (is_varnumstate (states.TopVar ()));
+
+        auto bddstate = Bdd::bddVar (states.TopVar ());
+        label = dt.ExistAbstract (bddstate).UnivAbstract (global_mmbdd.statevars);
+        state = varnum_to_state (states.TopVar ());
+        states = states.Else ();
+        return *this;
+      }
+
+      bool operator!= (const neighbor_iterator& other) const {
+        return states != other.states or state != other.state or label != other.label;
+      }
+
+      auto operator* () const { return std::pair (label, state); }
+    private:
+      Bdd dt, states;
+      meta_bdd state;
+      Bdd label;
+  };
+
+  inline auto meta_bdd::neighbors () const {
+    struct helper {
+        Bdd dt;
+        helper (Bdd dt) : dt {dt} {}
+        auto begin () const { return neighbor_iterator (dt); }
+        auto end () const { return neighbor_iterator (Bdd::bddZero ()); }
+    };
+    return helper (global_mmbdd.delta[state]);
+  }
+
   inline meta_bdd meta_bdd::one_step (const Bdd& l) const {
     return meta_bdd (global_mmbdd.successor (state, l));
   }
@@ -26,29 +74,11 @@ namespace MBDD {
     }
 
     auto to_make = Bdd::bddZero ();
-    auto trans = global_mmbdd.delta[state];
-    // dests is the OR of destination states.
-    auto dests = global_mmbdd.project_to_statevars (trans);
 
-    while (dests != Bdd::bddZero ()) {
-      assert (not dests.isTerminal ());
-      assert (dests.Then ().isOne ());
-      assert (is_varnumstate (dests.TopVar ()));
+    for (auto&& [label, next_state] : neighbors ())
+      to_make += map (label) *
+        (next_state.state == state ? BDDVAR_SELF : next_state.apply (map));
 
-      auto bddstate = Bdd::bddVar (dests.TopVar ());
-      // The labels that go to bddstate are computed by removing all labels that
-      // still have a state after bddstate is existentially quantified.
-      auto labels_to_state = trans.ExistAbstract (bddstate)
-        .UnivAbstract (global_mmbdd.statevars);
-
-      if (varnum_to_state (dests.TopVar ()) == state) // Self loop
-        bddstate = BDDVAR_SELF;
-      else
-        bddstate = meta_bdd (varnum_to_state (bddstate.TopVar ())).apply (map);
-
-      to_make += map (labels_to_state) * bddstate;
-      dests = dests.Else ();
-    }
     return global_mmbdd.make (to_make, global_mmbdd.is_accepting (state));
   }
 

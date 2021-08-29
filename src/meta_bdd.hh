@@ -73,6 +73,7 @@ namespace MBDD {
 
   class meta_bdd {
       friend master_meta_bdd;
+      class neighbor_iterator;
     public:
       meta_bdd () : state (STATE_EMPTY) {}
       meta_bdd (size_t state) : state (state) {}
@@ -82,6 +83,8 @@ namespace MBDD {
       template <typename T>
       bool rejects (T&& t) const { return not accepts (std::forward<T> (t)); }
       bool rejects (std::initializer_list<Bdd> w) const { return not accepts (w); }
+
+      auto neighbors () const;
 
       std::vector<Bdd> one_word (bool accepted = true) const;
 
