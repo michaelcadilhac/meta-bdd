@@ -158,12 +158,14 @@ int main () {
   auto comp3 = q8.transduct (ttr, {x1, x2}, {x0, x1});
 
   std::cout << "COMP3:" << comp3;
+  test (comp2 != comp3);
 
   {
     BddMap m;
     m.put (x0.TopVar (), x1);
     m.put (x1.TopVar (), x2);
     auto mod = comp3.apply ([&] (Bdd b) { return b.Compose (m); });
+    std::cout << "MOD: " << mod;
     test (mod == comp2);
   }
 
