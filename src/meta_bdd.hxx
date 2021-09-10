@@ -77,7 +77,7 @@ namespace MBDD {
 
     for (auto&& [label, next_state] : neighbors ())
       to_make += map (label) *
-        (next_state.state == state ? BDDVAR_SELF : next_state.apply (map));
+        (next_state.state == state ? BDDVAR_SELF : Bdd (next_state.apply (map)));
 
     return global_mmbdd.make (to_make, global_mmbdd.is_accepting (state));
   }
@@ -118,7 +118,9 @@ namespace MBDD {
   inline void master_meta_bdd::check_consistency () const {
     // Check that there are no valuation of the nonstate variables that lead to
     // two states.
+#ifndef NDEBUG
     for (auto&& state : MBDD::global_mmbdd)
       assert (is_trans_deterministic (global_mmbdd.delta[state.state]));
+#endif
   }
 }

@@ -129,8 +129,14 @@ namespace MBDD {
           // If we reached here because we're self looping, check that we are
           // indeed deterministic.  This is for transductions, and is guaranteed
           // by post-unambiguity:
-          assert (((void) "Transduction is post-ambiguous.",
-                   (all_labels & this_label).isZero ()));
+          __assert_verbose ((all_labels & this_label).isZero (),
+                            {
+                              std::cerr << "Transduction is post-ambiguous, labels are:\n"
+                                        << "- " << this_label << "\n"
+                                        << "- " << all_labels << "\n"
+                                        << "in states: " << state << ", " << other.state
+                                        << std::endl;
+                            });
           to_make.emplace_back (this_label, merge_state);
         }
         else {

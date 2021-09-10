@@ -10,6 +10,7 @@
 #include <functional>
 
 #include <iostream>
+#include <cassert>
 
 // Helper pretty printing.
 namespace std {
@@ -76,6 +77,9 @@ namespace MBDD {
       class neighbor_iterator;
     public:
       meta_bdd () : state (STATE_EMPTY) {}
+      meta_bdd (Bdd bdd) : state (varnum_to_state (bdd.TopVar ())) {
+        assert (is_varnumstate (bdd.TopVar ()));
+      }
       meta_bdd (size_t state) : state (state) {}
       bool accepts (std::span<const Bdd> w) const;
       bool accepts (std::initializer_list<Bdd> w) const { return accepts (std::span (w)); }
@@ -94,6 +98,7 @@ namespace MBDD {
         return state_to_bddvar (state);
       }
 
+      constexpr meta_bdd& operator= (const meta_bdd&) = default;
       bool operator== (const meta_bdd&) const = default;
 
       meta_bdd operator& (const meta_bdd& other) const;
@@ -299,6 +304,19 @@ namespace MBDD {
   inline meta_bdd make (Bdd trans, bool is_accepting) {
     return global_mmbdd.make (trans, is_accepting);
   }
+
+#ifdef NDEBUG
+#define __assert_verbose(Cond, F)
+#else
+#define __assert_verbose(Cond, F)               \
+  do {                                          \
+    bool assertion = (Cond);                    \
+    if (not assertion) {                        \
+      F;                                        \
+      assert (((void) #Cond, false));           \
+    }                                           \
+  } while (0)
+#endif
 }
 
 #include "meta_bdd.hxx"

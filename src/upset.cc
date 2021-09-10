@@ -1,43 +1,39 @@
 #include <vector>
+
+#include "cache.hh"
 #include "upset.hh"
 
-static std::map<size_t, MBDD::meta_bdd> bit_identities_cache;
+#warning yi impair xi pair
+
 
 using sylvan::Bdd;
 
 static MBDD::meta_bdd bit_identities (size_t nbits) {
-  auto cached = bit_identities_cache.find (nbits);
-  if (cached != bit_identities_cache.end ())
-    return cached->second;
+  static auto cache = MBDD::make_cache<MBDD::meta_bdd> (nbits);
+  auto cached = cache.get (nbits);
+  if (cached) return *cached;
 
-  size_t to = 1 << nbits;
-  Bdd full_trans = Bdd::bddZero ();
-
-  for (size_t x = 0; x < to; ++x) {
-    auto n = x;
-    auto trans = Bdd::bddOne ();
-
-    for (size_t i = 0; i < nbits; ++i) {
-      auto var = Bdd::bddVar (i);
-      auto var_mapped = Bdd::bddVar (i + nbits);
-      if (n & 1)
-        trans *= var * var_mapped;
-      else
-        trans *= !var * !var_mapped;
-      n >>= 1;
-    }
-    full_trans += trans * MBDD::self ();
+  Bdd full_trans = Bdd::bddOne ();
+  while (nbits--) {
+    auto var = Bdd::bddVar (2 * nbits);
+    auto var_mapped = Bdd::bddVar (2 * nbits + 1);
+    full_trans *= !(var ^ var_mapped);
   }
-  auto ret = MBDD::make (full_trans, true);
-  bit_identities_cache[nbits] = ret;
-  return ret;
+  return cache (MBDD::make (full_trans * MBDD::self (), true), nbits);
 }
 
 /* This takes a meta_bdd s s.t. s[0,...,0]* = s, and returns a meta_bdd x such
  * that u[0,...,0] in x iff u in x. */
 MBDD::meta_bdd upset::full_zero_padded (const MBDD::meta_bdd& s, Bdd all_zero) {
+
+  static auto cache = MBDD::make_cache<MBDD::meta_bdd, sylvan::BDD, sylvan::BDD> ();
+
+  auto cached = cache.get (Bdd (s).GetBDD (), all_zero.GetBDD ());
+  if (cached)
+    return *cached;
+
   if (s == MBDD::full () or s == MBDD::empty ())
-    return s;
+    return cache (s, Bdd (s).GetBDD (), all_zero.GetBDD ());
 
   bool should_be_accepting = s.accepts ({}), zero_seen = false;
   auto to_make = Bdd::bddZero ();
@@ -55,24 +51,70 @@ MBDD::meta_bdd upset::full_zero_padded (const MBDD::meta_bdd& s, Bdd all_zero) {
       to_make += label * new_dest;
     }
   }
-  return MBDD::make (to_make, should_be_accepting);
+  return cache (MBDD::make (to_make, should_be_accepting), Bdd (s).GetBDD (), all_zero.GetBDD ());
 }
 
-MBDD::meta_bdd upset::plus_transducer (const std::vector<size_t>& delta,
-                                       const std::vector<bool>& neg,
-                                       const std::vector<bool>& carries) {
-  // Caching
-  using tuple_t = std::tuple<std::remove_cvref_t<decltype (delta)>,
-                             std::remove_cvref_t<decltype (neg)>,
-                             std::remove_cvref_t<decltype (carries)>>;
-  static auto pt_cache = std::map<tuple_t, MBDD::meta_bdd> ();
-  auto cache_entry = std::make_tuple (delta, neg, carries);
-  {
-    auto cached = pt_cache.find (cache_entry);
-    if (cached != pt_cache.end ())
-      return cached->second;
-  }
-  auto cache = [&] (MBDD::meta_bdd ret) { return (pt_cache[cache_entry] = ret); };
+ MBDD::meta_bdd upset::plus_transducer_one_dim (size_t idx, size_t dim,
+                                                size_t delta,
+                                                bool neg, bool carry,
+                                                Bdd untouched_components) {
+#define local_args idx, dim, delta, neg, carry
+   static auto cache = MBDD::make_cache<MBDD::meta_bdd> (local_args);
+   auto cached = cache.get (idx, dim, delta, neg, carry);
+   if (cached)
+     return *cached;
+
+   if (delta == 0 and carry == 0)
+     return cache (bit_identities (dim), local_args);
+
+   auto var = Bdd::bddVar (2 * idx);
+   auto var_mapped = Bdd::bddVar (2 * idx + 1);
+   if (neg)
+     std::swap (var, var_mapped);
+   bool b = delta & 1;
+
+   Bdd trans_nocarry = MBDD::full (), trans_carry = MBDD::full ();
+   if (delta == 0) {
+     if (not carry) {
+       trans_nocarry = MBDD::self ();
+       /* trans_carry unused */
+     }
+     else {
+       trans_nocarry = plus_transducer_one_dim (idx, dim, 0, neg, false, untouched_components);
+       trans_carry = MBDD::self ();
+     }
+   }
+   else {
+     if (not (b and carry)) /* otherwise, a carry must be generated */
+       trans_nocarry = plus_transducer_one_dim (idx, dim, delta >> 1, neg, false, untouched_components);
+     if (b or carry) /* otherwise, no carry can be generated */
+       trans_carry = plus_transducer_one_dim (idx, dim, delta >> 1, neg, true, untouched_components);
+   }
+
+   auto trans = Bdd::bddOne ();
+   if (b and carry)     // + 2
+     trans = !(var ^ var_mapped) * trans_carry;
+   else if (b or carry) // + 1
+     trans = var * !var_mapped * trans_carry +
+       !var * var_mapped * trans_nocarry;
+   else                 // + 0
+     trans = !(var ^ var_mapped) * trans_nocarry;
+
+   return cache (MBDD::make (trans * untouched_components, false), local_args);
+#undef local_args
+ }
+
+
+
+
+MBDD::meta_bdd upset::plus_transducer (
+  const std::vector<size_t>& delta,
+  const std::vector<bool>& neg,
+  const std::vector<bool>& carries) {
+  static auto cache = MBDD::make_cache<MBDD::meta_bdd> (delta, neg, carries);
+  auto cached = cache.get (delta, neg, carries);
+  if (cached)
+    return *cached;
 
   // Main algo
   auto size = delta.size ();
@@ -89,7 +131,7 @@ MBDD::meta_bdd upset::plus_transducer (const std::vector<size_t>& delta,
   }
 
   if (all_zero_delta and all_zero_carries) // Stopping condition.
-    return cache (bit_identities (size));
+    return cache (bit_identities (size), delta, neg, carries);
 
   auto new_carries = std::vector<bool> (size);
   size_t to = 1 << size;
@@ -101,8 +143,8 @@ MBDD::meta_bdd upset::plus_transducer (const std::vector<size_t>& delta,
       bool at_least_one_carry_consummed = false;
 
       for (size_t i = 0; i < size; ++i) {
-        auto var = Bdd::bddVar (i);
-        auto var_mapped = Bdd::bddVar (i + size);
+        auto var = Bdd::bddVar (2 * i);
+        auto var_mapped = Bdd::bddVar (2 * i + 1);
         if (neg[i])
           std::swap (var, var_mapped);
         bool b = n & 1;
@@ -135,7 +177,7 @@ MBDD::meta_bdd upset::plus_transducer (const std::vector<size_t>& delta,
       else
         full_trans += trans * MBDD::self ();
     }
-    return cache (MBDD::make (full_trans, false));
+    return cache (MBDD::make (full_trans, false), delta, neg, carries);
   }
 
   for (size_t x = 0; x < to; ++x) {
@@ -143,8 +185,8 @@ MBDD::meta_bdd upset::plus_transducer (const std::vector<size_t>& delta,
     auto trans = Bdd::bddOne ();
 
     for (size_t i = 0; i < size; ++i) {
-      auto var = Bdd::bddVar (i);
-      auto var_mapped = Bdd::bddVar (i + size);
+      auto var = Bdd::bddVar (2 * i);
+      auto var_mapped = Bdd::bddVar (2 * i + 1);
       if (neg[i])
         std::swap (var, var_mapped);
       bool b = n & 1;
@@ -197,5 +239,5 @@ MBDD::meta_bdd upset::plus_transducer (const std::vector<size_t>& delta,
     }
     full_trans += trans * plus_transducer (delta_shifted, neg, new_carries);
   }
-  return cache (MBDD::make (full_trans, false));
+  return cache (MBDD::make (full_trans, false), delta, neg, carries);
 }

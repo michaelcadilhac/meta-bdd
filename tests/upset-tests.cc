@@ -1,5 +1,7 @@
 #include <algorithm>
 #include <upset.hh>
+using namespace std::literals;
+
 #include "tests.hh"
 
 using namespace sylvan;
@@ -99,9 +101,19 @@ int main (int argc, char** argv) {
     },
 
     [] () {
+#ifdef NDEBUG
+      auto u = upset ({1, 2, 3, 4, 5, 6, 7});
+      u += {-1, -2, -3, -4, -5, -6, -7};
+      assert (u.is_full ());
+#else
+      std::cout << "Test disabled because NDEBUG is not defined and it would take too long."
+                << std::endl;
+#endif
+    },
+
+    [] () {
       auto u = upset ({3, 1, 4, 9});
-      std::cout << "Computing transducer." << std::endl;
-      u += {3, -2, 3, -1};
+       u += {3, -2, 3, -1};
       // u = {6, 0, 7, 8}
 
       test (u.contains ({6, 3, 7, 9}));
@@ -139,7 +151,7 @@ int main (int argc, char** argv) {
     }
   };
 
-  if (argc > 1 && std::string (argv[1]) == "-x") {
+  if (argc > 1 and argv[1] == "-x"sv) {
     argv++; argc--;
     exit_on_fail = true;
   }
