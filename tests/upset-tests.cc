@@ -30,7 +30,10 @@ int main (int argc, char** argv) {
     },
 
     [] () {
+      auto x = upset ({1,1,1,1,8,1,1});
+      std::cout << "Upset of 1^7: " << x.get_mbdd () << std::endl;
       auto u = upset ({2, 1});
+      std::cout << "Upset of {2, 1}: " << u.get_mbdd () << std::endl;
       u += {5, 1};
 
       test (not u.contains ({6, 1}));
@@ -103,8 +106,14 @@ int main (int argc, char** argv) {
     [] () {
 #ifdef NDEBUG
       auto u = upset ({1, 2, 3, 4, 5, 6, 7});
-      u += {-1, -2, -3, -4, -5, -6, -7};
-      assert (u.is_full ());
+      std::cout << u.get_mbdd () << std::endl;
+      u = u + std::vector<ssize_t> {-1l, -2l, -3l, -4l, -5l, -6l, -7l};
+      test (u.is_full ());
+      /*std::cout << "Once again!" << std::endl;
+      auto v = upset ({1, 2, 3, 4, 5, 6, 7});
+      v += {-1, -2, -3, -4, -5, -6, -7};
+      test (v.is_full ());
+       std::cout << "Done." << std::endl;*/
 #else
       std::cout << "Test disabled because NDEBUG is not defined and it would take too long."
                 << std::endl;
@@ -132,17 +141,17 @@ int main (int argc, char** argv) {
     },
 
     [] () {
-      auto full_test = [] (std::vector<size_t> v) {
+      auto full_test = [] (std::vector<ssize_t> v) {
         test (v.size () == 5);
         auto uplimit = *std::ranges::max_element (v) + 2,
           downlimit = uplimit / 2;
 
         auto u = upset (v);
-        for (size_t i0 = downlimit; i0 < uplimit; ++i0)
-          for (size_t i1 = downlimit; i1 < uplimit; ++i1)
-            for (size_t i2 = downlimit; i2 < uplimit; ++i2)
-              for (size_t i3 = downlimit; i3 < uplimit; ++i3)
-                for (size_t i4 = downlimit; i4 < uplimit; ++i4)
+        for (ssize_t i0 = downlimit; i0 < uplimit; ++i0)
+          for (ssize_t i1 = downlimit; i1 < uplimit; ++i1)
+            for (ssize_t i2 = downlimit; i2 < uplimit; ++i2)
+              for (ssize_t i3 = downlimit; i3 < uplimit; ++i3)
+                for (ssize_t i4 = downlimit; i4 < uplimit; ++i4)
                   test (u.contains ({ i0, i1, i2, i3, i4 }) ==
                         (i0 >= v[0] and i1 >= v[1] and i2 >= v[2]
                          and i3 >= v[3] and i4 >= v[4]));

@@ -24,8 +24,8 @@ static MBDD::meta_bdd bit_identities (size_t nbits) {
 
 /* This takes a meta_bdd s s.t. s[0,...,0]* = s, and returns a meta_bdd x such
  * that u[0,...,0] in x iff u in x. */
+// Maybe todo: see if we can restrict to just a few dimensions
 MBDD::meta_bdd upset::full_zero_padded (const MBDD::meta_bdd& s, Bdd all_zero) {
-
   static auto cache = MBDD::make_cache<MBDD::meta_bdd, sylvan::BDD, sylvan::BDD> ();
 
   auto cached = cache.get (Bdd (s).GetBDD (), all_zero.GetBDD ());
@@ -55,7 +55,7 @@ MBDD::meta_bdd upset::full_zero_padded (const MBDD::meta_bdd& s, Bdd all_zero) {
 }
 
  MBDD::meta_bdd upset::plus_transducer_one_dim (size_t idx, size_t dim,
-                                                size_t delta,
+                                                upset::value_type delta,
                                                 bool neg, bool carry,
                                                 Bdd untouched_components) {
 #define local_args idx, dim, delta, neg, carry
@@ -108,7 +108,7 @@ MBDD::meta_bdd upset::full_zero_padded (const MBDD::meta_bdd& s, Bdd all_zero) {
 
 
 MBDD::meta_bdd upset::plus_transducer (
-  const std::vector<size_t>& delta,
+  const std::vector<upset::value_type>& delta,
   const std::vector<bool>& neg,
   const std::vector<bool>& carries) {
   static auto cache = MBDD::make_cache<MBDD::meta_bdd> (delta, neg, carries);
@@ -118,7 +118,7 @@ MBDD::meta_bdd upset::plus_transducer (
 
   // Main algo
   auto size = delta.size ();
-  auto delta_shifted = std::vector<size_t> (size);
+  auto delta_shifted = std::vector<upset::value_type> (size);
   Bdd full_trans = Bdd::bddZero ();
   bool all_zero_delta = true, all_zero_carries = true;
 
@@ -240,4 +240,18 @@ MBDD::meta_bdd upset::plus_transducer (
     full_trans += trans * plus_transducer (delta_shifted, neg, new_carries);
   }
   return cache (MBDD::make (full_trans, false), delta, neg, carries);
+}
+
+upset::upset (const std::vector<value_type>& v) : mbdd {MBDD::full ()}, dim {v.size ()} {
+  static auto cache = MBDD::make_cache<MBDD::meta_bdd> (v);
+  auto cached = cache.get (v);
+  if (cached) {
+    mbdd = *cached;
+    return;
+  }
+
+  for (size_t i = 0; i < dim; ++i)
+    mbdd = mbdd & up_mbdd_high_branch (v[i], i);
+
+  cache (mbdd, v);
 }

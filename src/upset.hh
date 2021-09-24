@@ -5,18 +5,16 @@
 
 class upset {
     using Bdd = sylvan::Bdd;
-
-    using value_type = size_t;
+  public:
+    // This must be signed since plus_transducers can decrement values.
+    using value_type = ssize_t;
   private:
     upset (const MBDD::meta_bdd& m, size_t d) : mbdd {m}, dim {d} {}
 
   public:
-    upset (std::span<const value_type> v) : mbdd {MBDD::full ()}, dim {v.size ()} {
-      for (size_t i = 0; i < dim; ++i)
-        mbdd = mbdd & up_mbdd_high_branch (v[i], i);
-    }
+    upset (const std::vector<value_type>& v);
 
-    upset (std::initializer_list<value_type> v) : upset (std::span (v)) {}
+    upset (std::initializer_list<value_type> v) : upset (std::vector (v)) {}
 
     upset operator& (const upset& other) const {
       assert (dim == other.dim);
@@ -32,8 +30,8 @@ class upset {
 
     upset& operator|= (const upset& other) { return ((*this) = (*this) | other); }
 
-    upset operator^ (std::span<const ssize_t> v) const {
-      std::vector<size_t> abs_v (v.size ());
+    upset operator^ (std::span<const value_type> v) const {
+      std::vector<value_type> abs_v (v.size ());
       std::vector<bool>   neg (v.size ());
       size_t i = 0;
       for (auto x : v) {
@@ -52,10 +50,13 @@ class upset {
       return pdd;
     }
 
-    upset operator+ (std::span<const ssize_t> v) const {
+    upset operator+ (std::span<const value_type> v) const {
       auto new_upset = *this;
 
       for (size_t i = 0; i < dim; ++i) {
+        if (v[i] == 0)
+          continue;
+
         static auto self_trans_cache = MBDD::make_cache<Bdd> (dim, i);
         auto st_cached = self_trans_cache.get (dim, i);
         auto untouched = Bdd::bddOne ();
@@ -84,8 +85,8 @@ class upset {
    }
 
 
-    upset& operator+= (std::span<const ssize_t> v) { return ((*this) = (*this) + v); }
-    upset& operator+= (std::initializer_list<ssize_t> v) { return (operator+=) (std::span (v)); }
+    upset& operator+= (std::span<const value_type> v) { return ((*this) = (*this) + v); }
+    upset& operator+= (std::initializer_list<value_type> v) { return (operator+=) (std::span (v)); }
 
     bool operator== (const upset& other) const = default;
 
@@ -155,11 +156,11 @@ class upset {
     }
 
     static MBDD::meta_bdd plus_transducer_one_dim (size_t idx, size_t dim,
-                                                size_t delta,
-                                                bool neg, bool carry,
-                                                Bdd untouched_components);
+                                                   value_type delta,
+                                                   bool neg, bool carry,
+                                                   Bdd untouched_components);
 
-    static MBDD::meta_bdd plus_transducer (const std::vector<size_t>& delta,
+    static MBDD::meta_bdd plus_transducer (const std::vector<value_type>& delta,
                                            const std::vector<bool>& neg,
                                            const std::vector<bool>& carries);
 

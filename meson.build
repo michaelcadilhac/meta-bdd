@@ -8,6 +8,8 @@ project ('MetaBDD', ['c', 'cpp'],
 sylvan_lib = dependency ('sylvan',
                         fallback: ['sylvan-wrap', 'sylvan_dep'])
 
+boost_dep = dependency('boost', modules : ['iostreams'])
+
 inc = include_directories ('src')
 
 subdir ('src')
