@@ -2,17 +2,18 @@
 #include <iostream>
 #include <set>
 
-#include "meta_bdd.hh"
+#include "meta_bdd_states_are_bddvars/meta_bdd.hh"
 
 
 namespace MBDD {
 
-  std::vector<Bdd> meta_bdd::one_word (bool accepted) const {
+  template <typename MMBdd>
+  std::vector<Bdd> bmeta_bdd<MMBdd>::one_word (bool accepted) const {
     std::vector<Bdd> w;
     size_t cur_state = state;
     // Project delta on anything but self and !accepted
     while (true) {
-      if (global_mmbdd.is_accepting (cur_state) == accepted)
+      if (mmbdd.is_accepting (cur_state) == accepted)
         return w;
 
       assert ((accepted and cur_state != STATE_EMPTY) or
@@ -22,7 +23,7 @@ namespace MBDD {
         return w;
 
       auto dontwant = state_to_bddvar (cur_state) * (accepted ? BDDVAR_EMPTY : BDDVAR_FULL);
-      auto future = global_mmbdd.delta[cur_state].UnivAbstract (dontwant).PickOneCube ();
+      auto future = mmbdd.delta[cur_state].UnivAbstract (dontwant).PickOneCube ();
 
       // Extract the state and label
       auto label = Bdd::bddOne ();
@@ -51,5 +52,4 @@ namespace MBDD {
 
     assert (false);
   }
-
 }

@@ -4,21 +4,23 @@ using namespace std::literals;
 
 #include "tests.hh"
 
-using namespace sylvan;
+auto mmbdd = MBDD::make_master_meta_bdd<sylvan::Bdd, MBDD::states_are_bddvars> ();
+
+using upset_bdd = upset::upset<decltype (mmbdd)>;
 
 int main (int argc, char** argv) {
   // Initialize sylvan
   lace_start(0, 0);
-  sylvan_set_sizes (1LL<<22, 1LL<<26, 1LL<<22, 1LL<<26);
-  sylvan_init_package ();
-  sylvan_init_bdd ();
+  sylvan::sylvan_set_sizes (1LL<<22, 1LL<<26, 1LL<<22, 1LL<<26);
+  sylvan::sylvan_init_package ();
+  sylvan::sylvan_init_bdd ();
 
   // Initialize MBDD
-  MBDD::init ();
+  mmbdd.init ();
 
   std::function<void ()> tests[] = {
     [] () {
-      auto u = upset ({2});
+      auto u = upset_bdd (mmbdd, {2});
       std::cout << u.get_mbdd ();
 
       test (u.contains ({2}));
@@ -30,9 +32,9 @@ int main (int argc, char** argv) {
     },
 
     [] () {
-      auto x = upset ({1,1,1,1,8,1,1});
+      auto x = upset_bdd (mmbdd, {1,1,1,1,8,1,1});
       std::cout << "Upset of 1^7: " << x.get_mbdd () << std::endl;
-      auto u = upset ({2, 1});
+      auto u = upset_bdd (mmbdd, {2, 1});
       std::cout << "Upset of {2, 1}: " << u.get_mbdd () << std::endl;
       u += {5, 1};
 
@@ -45,7 +47,7 @@ int main (int argc, char** argv) {
     },
 
     [] () {
-      auto u = upset ({3, 1, 4, 9});
+      auto u = upset_bdd (mmbdd, {3, 1, 4, 9});
       std::cout << "mbdd: " << u.get_mbdd ();
       test (u.contains ({3, 1, 4, 9}));
       test (u.contains ({4, 2, 4, 10}));
@@ -54,16 +56,16 @@ int main (int argc, char** argv) {
     },
 
     [] () {
-      auto u = upset ({0, 0});
+      auto u = upset_bdd (mmbdd, {0, 0});
       u += {1, 0};
       test (u.contains ({7, 3}));
       test (not u.contains ({0, 0}));
-      test ((u | upset ({0, 0})).is_full ());
-      test ((u & upset ({0, 0})) == u);
+      test ((u | upset_bdd (mmbdd, {0, 0})).is_full ());
+      test ((u & upset_bdd (mmbdd, {0, 0})) == u);
     },
 
     [] () {
-      auto u = upset ({2, 3});
+      auto u = upset_bdd (mmbdd, {2, 3});
       u += {-1, 0};
       test (u.contains ({2, 3}));
       test (u.contains ({1, 3}));
@@ -72,7 +74,7 @@ int main (int argc, char** argv) {
     },
 
     [] () {
-      auto u = upset ({3, 1, 4, 9});
+      auto u = upset_bdd (mmbdd, {3, 1, 4, 9});
       u += {3, 2, 3, 0};
 
       test (u.contains ({6, 3, 7, 9}));
@@ -83,34 +85,34 @@ int main (int argc, char** argv) {
     },
 
     [] () {
-      auto u = upset ({2});
+      auto u = upset_bdd (mmbdd, {2});
       std::cout << "u: " << u.get_mbdd () << std::endl;
-      auto v = upset ({0});
+      auto v = upset_bdd (mmbdd, {0});
       std::cout << "v: " << v.get_mbdd () << std::endl;
-      test (v.get_mbdd () == MBDD::full ());
+      test (v.get_mbdd () == mmbdd.full ());
       u = u + std::vector ({-2l});
       std::cout << "u trans'd: " << u.get_mbdd () << std::endl;
       test (u == v);
     },
 
     [] () {
-      auto u = upset ({3, 1, 1, 3}) | upset ({1, 3, 2, 2});
+      auto u = upset_bdd (mmbdd, {3, 1, 1, 3}) | upset_bdd (mmbdd, {1, 3, 2, 2});
       test (u.contains ({3, 1, 1, 3}));
       test (u.contains ({1, 3, 2, 2}));
       test (not u.contains ({1, 2, 2, 2}));
       test (not u.contains ({2, 0, 0, 3}));
       u += {-3, -3, -2, -3};
-      test (u.get_mbdd () == MBDD::full ());
+      test (u.get_mbdd () == mmbdd.full ());
     },
 
     [] () {
 #ifdef NDEBUG
-      auto u = upset ({1, 2, 3, 4, 5, 6, 7});
+      auto u = upset_bdd (mmbdd, {1, 2, 3, 4, 5, 6, 7});
       std::cout << u.get_mbdd () << std::endl;
       u = u + std::vector<ssize_t> {-1l, -2l, -3l, -4l, -5l, -6l, -7l};
       test (u.is_full ());
       /*std::cout << "Once again!" << std::endl;
-      auto v = upset ({1, 2, 3, 4, 5, 6, 7});
+      auto v = upset_bdd (mmbdd, {1, 2, 3, 4, 5, 6, 7});
       v += {-1, -2, -3, -4, -5, -6, -7};
       test (v.is_full ());
        std::cout << "Done." << std::endl;*/
@@ -121,7 +123,7 @@ int main (int argc, char** argv) {
     },
 
     [] () {
-      auto u = upset ({3, 1, 4, 9});
+      auto u = upset_bdd (mmbdd, {3, 1, 4, 9});
        u += {3, -2, 3, -1};
       // u = {6, 0, 7, 8}
 
@@ -146,7 +148,7 @@ int main (int argc, char** argv) {
         auto uplimit = *std::ranges::max_element (v) + 2,
           downlimit = uplimit / 2;
 
-        auto u = upset (v);
+        auto u = upset_bdd (mmbdd, v);
         for (ssize_t i0 = downlimit; i0 < uplimit; ++i0)
           for (ssize_t i1 = downlimit; i1 < uplimit; ++i1)
             for (ssize_t i2 = downlimit; i2 < uplimit; ++i2)

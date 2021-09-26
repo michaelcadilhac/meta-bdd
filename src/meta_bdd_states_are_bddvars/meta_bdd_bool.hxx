@@ -4,14 +4,16 @@
 #include <unordered_map>
 #include <set>
 
-#include "meta_bdd.hh"
+#include "meta_bdd_states_are_bddvars/meta_bdd.hh"
 
 
 namespace MBDD {
 
-  template <typename Map, typename Hash>
-  meta_bdd meta_bdd::intersection_union (const meta_bdd& other, bool intersection,
-                                         const Map& map, const Hash& map_hash) const {
+
+  template <typename MMBdd>
+  template <typename Map, typename Hash, typename, typename EnabledOnlyIfMMBddIsNotConst>
+  bmeta_bdd<MMBdd> bmeta_bdd<MMBdd>::intersection_union (const bmeta_bdd& other, bool intersection,
+                                                       const Map& map, const Hash& map_hash) const {
     typedef std::tuple<size_t, size_t, bool, Hash> tuple_t;
     static std::map<tuple_t, size_t> iu_cache;
 
@@ -21,11 +23,11 @@ namespace MBDD {
     auto cached = iu_cache.find (cache_tuple);
 
     if (cached != iu_cache.end ())
-      return cached->second;
+      return bmeta_bdd (mmbdd, cached->second);
 
     auto cache = [&] (size_t s) {
       iu_cache[cache_tuple] = s;
-      return s;
+      return bmeta_bdd (mmbdd, s);
     };
 
     constexpr bool nomap = std::is_same<Map, std::identity>::value;
@@ -55,8 +57,8 @@ namespace MBDD {
     }
 
     // Compute the conjunction of deltas with the second primed.
-    auto conj = global_mmbdd.delta[state] *
-      global_mmbdd.delta[other.state].Compose (global_mmbdd.statevars_to_statevarsprime);
+    auto conj = mmbdd.delta[state] *
+      mmbdd.delta[other.state].Compose (mmbdd.statevars_to_statevarsprime);
 
     auto to_make = std::list<std::pair<Bdd, size_t>> ();
     auto all_labels = Bdd::bddZero ();
@@ -93,7 +95,7 @@ namespace MBDD {
       // Remove the user variables with state dependency.  We need the prime
       // states since we projected out dest_states[0] unprimed.
       auto conj_for_dest =
-        conj_nostatevar_for_dest.UnivAbstract (global_mmbdd.statevars * global_mmbdd.statevarsprime);
+        conj_nostatevar_for_dest.UnivAbstract (mmbdd.statevars * mmbdd.statevarsprime);
       // Remove this transition (pair) from conj.
       conj -= conj_for_dest;
 
@@ -108,7 +110,7 @@ namespace MBDD {
           if (nomap)
             merge_state = dest_states[0];
           else
-            merge_state = meta_bdd (dest_states[0]).apply (map).state;
+            merge_state = bmeta_bdd (mmbdd, dest_states[0]).apply (map).state;
         }
         else
           // Looping
@@ -118,8 +120,8 @@ namespace MBDD {
           else
             // Recursive call:
             merge_state =
-              meta_bdd (dest_states[0])
-              .intersection_union (meta_bdd (dest_states[1]),
+              bmeta_bdd (mmbdd, dest_states[0])
+              .intersection_union (bmeta_bdd (mmbdd, dest_states[1]),
                                    intersection, map)
               .state;
 
@@ -150,7 +152,7 @@ namespace MBDD {
                        it->second != -1u));
               auto union_merge_state =
                 /* union, no map, as this is after the map has been applied. */
-                (meta_bdd (merge_state) | meta_bdd (it->second)).state;
+                (bmeta_bdd (mmbdd, merge_state) | bmeta_bdd (mmbdd, it->second)).state;
               to_make.erase (it);
               to_make.emplace_back (conj, union_merge_state);
               conj = this_label & (!it->first);
@@ -172,25 +174,31 @@ namespace MBDD {
       target += p.first * (p.second == -1u ? BDDVAR_SELF : state_to_bddvar (p.second));
 
     return cache (
-      global_mmbdd.make (target,
-                         intersection ?
-                         /*  */ global_mmbdd.is_accepting (state) and global_mmbdd.is_accepting (other.state) :
-                         /*  */ global_mmbdd.is_accepting (state) or global_mmbdd.is_accepting (other.state)).state
+      mmbdd.make (target,
+                  intersection ?
+                  /*  */ mmbdd.is_accepting (state) and mmbdd.is_accepting (other.state) :
+                  /*  */ mmbdd.is_accepting (state) or mmbdd.is_accepting (other.state)).state
       );
   }
 
-  meta_bdd meta_bdd::operator& (const meta_bdd& other) const {
+  template <typename MMBdd>
+  template <typename, typename EnabledOnlyIfMMBddIsNotConst>
+  bmeta_bdd<MMBdd> bmeta_bdd<MMBdd>::operator& (const bmeta_bdd<MMBdd>& other) const {
     return intersection_union (other, true);
   }
 
-  meta_bdd meta_bdd::operator| (const meta_bdd& other) const {
+  template <typename MMBdd>
+  template <typename, typename EnabledOnlyIfMMBddIsNotConst>
+  bmeta_bdd<MMBdd> bmeta_bdd<MMBdd>::operator| (const bmeta_bdd<MMBdd>& other) const {
     return intersection_union (other, false);
   }
 
   /* Transduction is seen as an intersection with projection. */
-  meta_bdd meta_bdd::transduct (const meta_bdd& other,
-                                std::span<const Bdd> output_vars,
-                                std::span<const Bdd> to_vars) const {
+  template <typename MMBdd>
+  template <typename, typename EnabledOnlyIfMMBddIsNotConst>
+  bmeta_bdd<MMBdd> bmeta_bdd<MMBdd>::transduct (const bmeta_bdd& other,
+                                    std::span<const Bdd> output_vars,
+                                    std::span<const Bdd> to_vars) const {
     assert (output_vars.size () == to_vars.size () and output_vars.size () != 0);
     // Construct the map output_var -> to_var.
     BddMap m;

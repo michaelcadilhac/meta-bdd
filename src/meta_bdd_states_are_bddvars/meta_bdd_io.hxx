@@ -2,7 +2,7 @@
 #include <iostream>
 #include <set>
 
-#include "meta_bdd.hh"
+#include "meta_bdd_states_are_bddvars/meta_bdd.hh"
 
 namespace MBDD {
 
@@ -61,22 +61,27 @@ namespace MBDD {
     }
   }
 
-  std::ostream& operator<< (std::ostream& os, const meta_bdd& b) {
+  template <typename MMBdd>
+  std::ostream& operator<< (std::ostream& os, const bmeta_bdd<MMBdd>& b) {
     std::set<size_t> already_printed = {};
     b.print (os, already_printed);
     return os;
   }
+  // make sure it's instanciated:
+  template std::ostream& operator<< (std::ostream& os, const bmeta_bdd<master_bmeta_bdd>& b);
+  template std::ostream& operator<< (std::ostream& os, const bmeta_bdd<const master_bmeta_bdd>& b);
 
-  void meta_bdd::print (std::ostream& os, std::set<size_t>& already_printed) const {
+  template <typename MMBdd>
+  void bmeta_bdd<MMBdd>::print (std::ostream& os, std::set<size_t>& already_printed) const {
     std::set<size_t> successors;
 
     os << state;
     already_printed.insert (state);
 
 
-    auto trans = global_mmbdd.delta[state];
+    auto trans = mmbdd.delta[state];
 
-    if (global_mmbdd.is_accepting (state))
+    if (mmbdd.is_accepting (state))
       os << "(acc)";
 
     os << ": ";
@@ -95,10 +100,10 @@ namespace MBDD {
     os << "\n";
 
     for (auto&& succ_state : successors)
-      meta_bdd (succ_state).print (os, already_printed);
+      bmeta_bdd (mmbdd, succ_state).print (os, already_printed);
   }
-
 }
+
 std::ostream& std::operator<< (std::ostream& os, const sylvan::Bdd& l) {
   MBDD::print_bdd (l, os);
   return os;

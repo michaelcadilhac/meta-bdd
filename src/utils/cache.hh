@@ -2,7 +2,7 @@
 #include <map>
 #include <memory>
 
-namespace MBDD {
+namespace utils {
   template <typename Ret, typename... Args>
   class cache_t {
       using cache_key_t = std::tuple<Args...>;
@@ -16,7 +16,8 @@ namespace MBDD {
       }
 
       Ret operator () (const Ret& r, const Args&... args) {
-        return (cache[std::make_tuple (args...)] = r); }
+        return (cache.insert_or_assign (std::make_tuple (args...), r).first)->second;
+      }
     private:
       cache_map_t cache;
   };

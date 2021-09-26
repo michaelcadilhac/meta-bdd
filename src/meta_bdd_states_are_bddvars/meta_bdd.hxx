@@ -2,32 +2,35 @@
 
 namespace MBDD {
 
-  // These implementations are moved mostly because they talk about the global MMBDD.
-  inline bool meta_bdd::accepts (std::span<const Bdd> w) const {
+  template <typename MMBdd>
+  inline bool bmeta_bdd<MMBdd>::accepts (std::span<const Bdd> w) const {
     auto cur_state = state;
     for (auto&& l : w) {
-      cur_state = global_mmbdd.successor (cur_state, l);
+      cur_state = mmbdd.successor (cur_state, l);
       if (cur_state == STATE_FULL)
         return true;
       if (cur_state == STATE_EMPTY)
         return false;
     }
-    return global_mmbdd.is_accepting (cur_state);
+    return mmbdd.is_accepting (cur_state);
   }
 
-  class meta_bdd::neighbor_iterator {
+  template <typename MMBdd>
+  class bmeta_bdd<MMBdd>::neighbor_iterator {
     public:
-      neighbor_iterator (Bdd dt) :
+      neighbor_iterator (MMBdd& mmbdd, Bdd dt) :
+        mmbdd {mmbdd},
         dt {dt},
         // states is the OR of destination states.
-        states {dt.isZero () ? Bdd::bddZero () : global_mmbdd.project_to_statevars (dt)}
+        states {dt.isZero () ? Bdd::bddZero () : mmbdd.project_to_statevars (dt)},
+        state {mmbdd}
       {
         ++(*this);
       }
 
       neighbor_iterator& operator++ () {
         if (states == Bdd::bddZero ()) {
-          state = 0;
+          state.state = 0;
           label = Bdd::bddZero ();
           return *this;
         }
@@ -36,8 +39,8 @@ namespace MBDD {
         assert (is_varnumstate (states.TopVar ()));
 
         auto bddstate = Bdd::bddVar (states.TopVar ());
-        label = dt.ExistAbstract (bddstate).UnivAbstract (global_mmbdd.statevars);
-        state = varnum_to_state (states.TopVar ());
+        label = dt.ExistAbstract (bddstate).UnivAbstract (mmbdd.statevars);
+        state.state = varnum_to_state (states.TopVar ());
         states = states.Else ();
         return *this;
       }
@@ -48,27 +51,32 @@ namespace MBDD {
 
       auto operator* () const { return std::pair (label, state); }
     private:
+      MMBdd& mmbdd;
       Bdd dt, states;
-      meta_bdd state;
+      bmeta_bdd state;
       Bdd label;
   };
 
-  inline auto meta_bdd::neighbors () const {
+  template <typename MMBdd>
+  inline auto bmeta_bdd<MMBdd>::neighbors () const {
     struct helper {
+        MMBdd& mmbdd;
         Bdd dt;
-        helper (Bdd dt) : dt {dt} {}
-        auto begin () const { return neighbor_iterator (dt); }
-        auto end () const { return neighbor_iterator (Bdd::bddZero ()); }
+        helper (MMBdd& mmbdd, Bdd dt) : mmbdd {mmbdd}, dt {dt} {}
+        auto begin () const { return neighbor_iterator (mmbdd, dt); }
+        auto end () const { return neighbor_iterator (mmbdd, Bdd::bddZero ()); }
     };
-    return helper (global_mmbdd.delta[state]);
+    return helper (mmbdd, mmbdd.delta[state]);
   }
 
-  inline meta_bdd meta_bdd::one_step (const Bdd& l) const {
-    return meta_bdd (global_mmbdd.successor (state, l));
+  template <typename MMBdd>
+  inline bmeta_bdd<MMBdd> bmeta_bdd<MMBdd>::one_step (const Bdd& l) const {
+    return bmeta_bdd (mmbdd, mmbdd.successor (state, l));
   }
 
-  template <typename Map>
-  meta_bdd meta_bdd::apply (Map map) const {
+  template <typename MMBdd>
+  template <typename Map, typename, typename EnableOnlyIfMMBddIsNotConst>
+  bmeta_bdd<MMBdd> bmeta_bdd<MMBdd>::apply (Map map) const {
     if constexpr (std::is_same<Map, std::identity>::value) {
       return *this;
     }
@@ -79,16 +87,16 @@ namespace MBDD {
       to_make += map (label) *
         (next_state.state == state ? BDDVAR_SELF : Bdd (next_state.apply (map)));
 
-    return global_mmbdd.make (to_make, global_mmbdd.is_accepting (state));
+    return mmbdd.make (to_make, mmbdd.is_accepting (state));
   }
 
-  inline auto master_meta_bdd::iterator::operator++ () {
-    if (++state == global_mmbdd.delta.size ())
+  inline auto master_bmeta_bdd::iterator::operator++ () {
+    if (++state == mmbdd.delta.size ())
       state = -1u;
     return *this;
   }
 
-  inline bool master_meta_bdd::is_trans_deterministic (Bdd trans) const {
+  inline bool master_bmeta_bdd::is_trans_deterministic (Bdd trans) const {
     // Frankly unsure what Bdd::operator< is computing, so use raw bdd
     // type for set to sort.
     std::set<BDD> labels;
@@ -115,12 +123,12 @@ namespace MBDD {
     return true;
   }
 
-  inline void master_meta_bdd::check_consistency () const {
+  inline void master_bmeta_bdd::check_consistency () const {
     // Check that there are no valuation of the nonstate variables that lead to
     // two states.
 #ifndef NDEBUG
-    for (auto&& state : MBDD::global_mmbdd)
-      assert (is_trans_deterministic (global_mmbdd.delta[state.state]));
+    //   for (auto&& state : MBDD::mmbdd)
+    //assert (is_trans_deterministic (mmbdd.delta[state.state]));
 #endif
   }
 }

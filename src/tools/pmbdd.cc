@@ -1,11 +1,15 @@
 #include <boost/spirit/home/x3.hpp>
 #include <iostream>
 #include <fstream>
+#include <queue>
 
-#include "upset.hh"
+#include <upset.hh>
 #include "petri_net.hh"
 
-using value_t = upset::value_type;
+auto mmbdd = MBDD::make_master_meta_bdd<sylvan::Bdd, MBDD::states_are_bddvars> ();
+using upset_bdd = upset::upset<decltype (mmbdd)>;
+
+using value_t = upset_bdd::value_type;
 
 struct transition_view {
     std::vector<value_t> budgets;
@@ -39,19 +43,45 @@ static auto map_to_vec (const petri_net::place_to_weight_t& m, size_t num_places
   return ret;
 }
 
+
+// Debug
+template <typename T>
+std::ostream& operator<< (std::ostream& out, const std::vector<T>& v) {
+    if (!v.empty()) {
+        out << '[';
+        std::ranges::copy(v, std::ostream_iterator<T>(out, ", "));
+        out << "\b\b]";
+    }
+    return out;
+}
+
 static bool backward_coverability (const std::vector<value_t>& init,
                                    const std::vector<value_t>& target,
                                    const std::vector<transition_view>& transitions) {
-  auto u = upset (init), prev_u = u;
-  do {
-    prev_u = u;
-    for (auto&& t : transitions) {
-      u += t.backward_deltas;
-      u = (u & t.budgets) | u;
-    }
-  } while (prev_u == u);
+  auto B = upset_bdd (mmbdd, target), Bprime = B;
+  size_t i = 0;
 
-  return u.contains (target);
+  do {
+    std::cout << "Loop #" << i++ << std::endl;
+    //std::cout << "Bprime is: " << Bprime << std::endl;
+
+
+    B = Bprime;
+    for (auto&& t : transitions) {
+      std::cout << "Applying transition deltas " << t.backward_deltas << std::endl;
+      auto mt = (B + t.backward_deltas);
+      //std::cout << "mt is: " << mt << std::endl;
+      std::cout << "Applying transition budgets " << t.budgets << std::endl;
+      mt &= t.budgets;
+      //std::cout << "mt is: " << mt << std::endl;
+      std::cout << "Adding to Bprime" << std::endl;
+      if (mt.contains (init))
+        return true;
+      Bprime |= mt;
+    }
+  } while (B != Bprime);
+
+  return false;
 }
 
 int main (int argc, char* argv[]) {
@@ -65,7 +95,7 @@ int main (int argc, char* argv[]) {
   sylvan::sylvan_init_bdd ();
 
   // Initialize MBDD
-  MBDD::init ();
+  mmbdd.init ();
 
   try {
     petri_net pnet (argv[1]);

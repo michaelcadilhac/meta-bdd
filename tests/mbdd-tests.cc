@@ -3,11 +3,13 @@
 
 using namespace sylvan;
 
+auto mmbdd = MBDD::make_master_meta_bdd<sylvan::Bdd, MBDD::states_are_bddvars> ();
+
 auto flat_automaton (std::span<const Bdd> w) {
   assert (w.size () > 0);
   if (w.size () == 1) // End of the list.
-    return MBDD::make (w[0] * MBDD::self (), true);
-  return MBDD::make (w[0] * MBDD::self () | w[1] * flat_automaton (w.subspan (2)), false);
+    return mmbdd.make (w[0] * mmbdd.self (), true);
+  return mmbdd.make (w[0] * mmbdd.self () | w[1] * flat_automaton (w.subspan (2)), false);
 }
 
 
@@ -23,23 +25,23 @@ int main () {
   sylvan_init_bdd ();
 
   // Initialize MBDD
-  MBDD::init ();
+  mmbdd.init ();
 
   auto x0 = Bdd::bddVar (0),
     x1 = Bdd::bddVar (1);
 
-  auto qfull = MBDD::make (x0 * MBDD::self () + !x0 * MBDD::full (), true);
-  test (qfull == MBDD::full ());
+  auto qfull = mmbdd.make (x0 * mmbdd.self () + !x0 * mmbdd.full (), true);
+  test (qfull == mmbdd.full ());
 
-  auto qempty = MBDD::make ((x0 * x1) * MBDD::empty () + !(x0 * x1) * MBDD::self (), false);
-  test (qempty == MBDD::empty ());
+  auto qempty = mmbdd.make ((x0 * x1) * mmbdd.empty () + !(x0 * x1) * mmbdd.self (), false);
+  test (qempty == mmbdd.empty ());
 
-  test (MBDD::make (MBDD::full (), true) == MBDD::full ());
-  test (MBDD::make (MBDD::self (), true) == MBDD::full ());
-  test (MBDD::make (MBDD::empty (), false) == MBDD::empty ());
-  test (MBDD::make (MBDD::self (), false) == MBDD::empty ());
+  test (mmbdd.make (mmbdd.full (), true) == mmbdd.full ());
+  test (mmbdd.make (mmbdd.self (), true) == mmbdd.full ());
+  test (mmbdd.make (mmbdd.empty (), false) == mmbdd.empty ());
+  test (mmbdd.make (mmbdd.self (), false) == mmbdd.empty ());
 
-  auto q = MBDD::make ((x0 * !x1) * MBDD::full (), false);
+  auto q = mmbdd.make ((x0 * !x1) * mmbdd.full (), false);
 
   std::cout << q;
   std::cout << "q accepts " << q.one_word ()
@@ -50,8 +52,8 @@ int main () {
   test (not q.accepts ({ !x0 * x1 }));
   test (not q.accepts ({ x0 * x1, x0 * x1, !x1 }));
 
-  test (MBDD::full ().accepts ({ x0, x0, x0, x0 }));
-  test (not MBDD::empty ().accepts ({ x0, x0, x0, x0 }));
+  test (mmbdd.full ().accepts ({ x0, x0, x0, x0 }));
+  test (not mmbdd.empty ().accepts ({ x0, x0, x0, x0 }));
 
   auto q1 = flat_automaton ({x0, !x0, Bdd::bddZero (), x1, x1});
   std::cout << q1;
@@ -72,7 +74,7 @@ int main () {
   test (q1.one_step (!x0) == q2.one_step (!x0));
 
   auto q3 = flat_automaton ({x0, !x0, (x0 * x1) | (!x0 * !x1) | (x0 * !x1) | (!x0 * x1)});
-  test (q3.one_step (!x0) == MBDD::full ());
+  test (q3.one_step (!x0) == mmbdd.full ());
 
   std::cout << "q2\n" << q2;
   std::cout << "q1 & q2\n" << (q1 & q2);
@@ -96,29 +98,30 @@ int main () {
   test (not q5.accepts ({ !x0 * x1, x1 })); // in q1 not q4
   test (not q5.accepts ({ !x0 * x1, !x1 * x0, x1, x1 })); // in q4 not q1
 
-  test (q5 == (q5 & MBDD::full ()));
-  test (MBDD::empty () == (q5 & MBDD::empty ()));
+  test (q5 == (q5 & mmbdd.full ()));
+  test (mmbdd.empty () == (q5 & mmbdd.empty ()));
 
-  test ((q4 & q) == MBDD::empty ());
+  test ((q4 & q) == mmbdd.empty ());
 
-  auto q5p = MBDD::make (x0 * MBDD::full () + !x0 * MBDD::self (), false);
-  auto q5pp = MBDD::make (x0 * MBDD::full () + (x1 * !x0) * q2 + (!x1 * !x0) * MBDD::self (), false);
+  auto q5p = mmbdd.make (x0 * mmbdd.full () + !x0 * mmbdd.self (), false);
+  auto q5pp = mmbdd.make (x0 * mmbdd.full () + (x1 * !x0) * q2 + (!x1 * !x0) * mmbdd.self (), false);
   auto q5pi = q5p & q5pp;
   std::cout << "q5pi: " << q5pi;
   test (q5pi == (q5pp & q5p));
 
-  auto q6 = MBDD::make (!(x0 * !x1) * MBDD::full (), false);
-  auto q7 = MBDD::make (MBDD::full (), false);
+  auto q6 = mmbdd.make (!(x0 * !x1) * mmbdd.full (), false);
+  auto q7 = mmbdd.make (mmbdd.full (), false);
 
   test ((q | q6) == q7);
   test ((q | q6) == (q6 | q));
 
   // Print a word per state
-  for (auto&& state : MBDD::global_mmbdd) {
+  for (auto&& state : mmbdd) {
     std::cout << "State";
-    if (state != MBDD::empty ())
+    std::cout << state;
+    if (state != mmbdd.empty ())
       std::cout << " accepts [" << state.one_word () << "]";
-    if (state != MBDD::full ())
+    if (state != mmbdd.full ())
       std::cout << " rejects [" <<  state.one_word (false) << "]";
     std::cout << std::endl;
   }
@@ -127,8 +130,8 @@ int main () {
   std::cout << "TRANSDUCTIONS." << std::endl;
 
   auto x2 = Bdd::bddVar (2), x3 = Bdd::bddVar (3);
-  auto ttr = MBDD::make (x0 * x2 * MBDD::self () + !x0 * !x2 * MBDD::self (), true);
-  auto qq8 = MBDD::make (x0 * MBDD::self () + !x0 * MBDD::empty (), true);
+  auto ttr = mmbdd.make (x0 * x2 * mmbdd.self () + !x0 * !x2 * mmbdd.self (), true);
+  auto qq8 = mmbdd.make (x0 * mmbdd.self () + !x0 * mmbdd.empty (), true);
 
   auto res = qq8.transduct (ttr, {x2}, {x2});
   std::cout << "only x2*:" << qq8;
@@ -136,10 +139,10 @@ int main () {
   test (not res.accepts ({x2, !x2}));
 
   // Simple transduction
-  auto tr = MBDD::make  ((x0 * x1) * x2 * !x3 * MBDD::self () +
-                        !(x0 * x1) * !x2 * x3 * MBDD::self (), true);
+  auto tr = mmbdd.make  ((x0 * x1) * x2 * !x3 * mmbdd.self () +
+                        !(x0 * x1) * !x2 * x3 * mmbdd.self (), true);
 
-  auto q8 = MBDD::make (x0 * x1 * MBDD::empty () + !(x0 * x1) * MBDD::full (), false);
+  auto q8 = mmbdd.make (x0 * x1 * mmbdd.empty () + !(x0 * x1) * mmbdd.full (), false);
 
   std::cout << q8;
   std::cout << "AND" << (q8 & tr) << "END" << std::endl;
@@ -172,12 +175,12 @@ int main () {
   // This one is not output deterministic, but is post-unambiguous
   {
     // The one T transition.
-    auto q = MBDD::make (MBDD::full (), false);
+    auto q = mmbdd.make (mmbdd.full (), false);
 
-    // Changing q to MBDD::self would make it post-ambiguous.
-    auto tr = MBDD::make ((x0 * x2 * x3 * q) +
+    // Changing q to mmbdd.self would make it post-ambiguous.
+    auto tr = mmbdd.make ((x0 * x2 * x3 * q) +
                           (!x0 * x1 * x2 * x3 + !x0 * !x1 * !x2 * x3) *
-                          MBDD::full (), false);
+                          mmbdd.full (), false);
 
     auto comp = q.transduct (tr, {x2, x3}, {x2, x3});
 

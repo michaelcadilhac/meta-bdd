@@ -168,7 +168,7 @@ namespace petri_pl {
           auto& error_handler = x3::get<x3::error_handler_tag> (context).get ();
           std::string message = "Error! Expecting " + x.which () + " at:";
           error_handler (x.where (), message);
-          return x3::error_handler_result::fail;
+          return x3::error_handler_result::rethrow;
         }
     };
 
@@ -182,6 +182,11 @@ namespace petri_pl {
     using x3::attr;
     using ascii::char_;
     using ascii::alnum;
+
+    static auto const comment = lexeme [
+      "/*" >> *(char_ - "*/") >> "*/"
+      | "%" >> *~char_("\r\n") >> x3::eol
+      ];
 
     struct quoted_string_class;
     x3::rule<quoted_string_class, std::string> const quoted_string = "quoted_string";
@@ -229,7 +234,7 @@ namespace petri_pl {
     struct statement_class : error_handler {};
     struct place_class : savers::save_place {};
     struct transition_class : savers::save_transition {};
-    struct traget_class : savers::save_target {};
+    struct target_class : savers::save_target {};
     struct init_class : savers::save_init {};
   }
 }
@@ -243,7 +248,7 @@ petri_net::petri_net (const std::string& fname) {
 
   // Load up the file in a mmaped location
   boost::iostreams::mapped_file_source mm (fname);
-  auto iter = mm.begin (), start = iter, end = mm.end ();
+  auto iter = mm.begin (), end = mm.end ();
 
   // Error handling
   using error_handler_type = boost::spirit::x3::error_handler<decltype (iter)>;
@@ -256,11 +261,14 @@ petri_net::petri_net (const std::string& fname) {
       ]];
 
 
-  bool r = boost::spirit::x3::phrase_parse (iter, end, parser, space);
-
-  if (not r and iter != end and iter != start)
-    error_handler (iter, end, "Error! Unexpected token here:");
-
-  if (not r or iter != end)
+  try {
+    bool r = boost::spirit::x3::phrase_parse (iter, end, parser, space | petri_pl::parser::comment);
+    if (not r or iter != end) {
+      error_handler (iter, end, "Error! Unexpected token here:");
+      throw parse_error ();
+    }
+  }
+  catch (boost::spirit::x3::expectation_failure<decltype (iter)>&) {
     throw parse_error ();
+  }
 }
