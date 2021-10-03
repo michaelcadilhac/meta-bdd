@@ -49,7 +49,7 @@ namespace MBDD {
         return states != other.states or state != other.state or label != other.label;
       }
 
-      auto operator* () const { return std::pair (label, state); }
+      auto operator* () const { return std::pair (state, label); }
     private:
       MMBdd& mmbdd;
       Bdd dt, states;
@@ -83,17 +83,11 @@ namespace MBDD {
 
     auto to_make = Bdd::bddZero ();
 
-    for (auto&& [label, next_state] : neighbors ())
+    for (auto&& [next_state, label] : neighbors ())
       to_make += map (label) *
         (next_state.state == state ? BDDVAR_SELF : Bdd (next_state.apply (map)));
 
     return mmbdd.make (to_make, mmbdd.is_accepting (state));
-  }
-
-  inline auto master_bmeta_bdd::iterator::operator++ () {
-    if (++state == mmbdd.delta.size ())
-      state = -1u;
-    return *this;
   }
 
   inline bool master_bmeta_bdd::is_trans_deterministic (Bdd trans) const {

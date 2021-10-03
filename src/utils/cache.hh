@@ -15,7 +15,7 @@ namespace utils {
         return cached != cache.end () ? &cached->second : nullptr;
       }
 
-      Ret operator () (const Ret& r, const Args&... args) {
+      const Ret& operator () (const Ret& r, const Args&... args) {
         return (cache.insert_or_assign (std::make_tuple (args...), r).first)->second;
       }
     private:

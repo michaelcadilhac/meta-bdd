@@ -2,6 +2,7 @@
 #include <map>
 #include <string>
 #include <vector>
+#include <list>
 
 namespace petri_pl {
   struct savers;
@@ -29,12 +30,13 @@ class petri_net {
 
     friend petri_pl::savers;
 
-    const place_to_weight_t& get_init () const   { return init; }
-    const place_to_weight_t& get_target () const { return target; }
+    const place_to_weight_t&            get_init () const   { return init; }
+    const std::list<place_to_weight_t>& get_targets () const { return targets; }
 
   private:
     transitions_t transitions;
     std::map<std::string, place_id_t> place_name_to_place_id;
-    place_to_weight_t init, target;
+    place_to_weight_t init;
+    std::list<place_to_weight_t> targets;
     unsigned nplaces = 0;
 };

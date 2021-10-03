@@ -1,6 +1,8 @@
 #include <vector>
 
 #include <utils/cache.hh>
+#include <sylvan.h>
+#include <sylvan_obj.hpp>
 #include <upset/upset_bdd.hh>
 
 #warning yi impair xi pair
@@ -8,10 +10,11 @@
 namespace upset {
   using sylvan::Bdd;
 
-  using mmbdd_t = MBDD::master_meta_bdd<sylvan::Bdd, MBDD::states_are_bddvars>;
-  using meta_bdd = mmbdd_t::meta_bdd;
+  template <typename Bdd, typename StateType>
+  using mmbdd_t = MBDD::master_meta_bdd<Bdd, StateType>;
 
-  meta_bdd upset<mmbdd_t>::bit_identities (size_t nbits) const {
+  template <typename Bdd, typename StateType>
+  auto upset<mmbdd_t<Bdd, StateType>>::bit_identities (size_t nbits) const {
     static auto cache = utils::make_cache<meta_bdd> (nbits);
     auto cached = cache.get (nbits);
     if (cached) return *cached;
@@ -28,39 +31,41 @@ namespace upset {
   /* This takes a meta_bdd s s.t. s[0,...,0]* = s, and returns a meta_bdd x such
    * that u[0,...,0] in x iff u in x. */
   // Maybe todo: see if we can restrict to just a few dimensions
-  meta_bdd upset<mmbdd_t>::full_zero_padded (const meta_bdd& s, Bdd all_zero) const {
-    static auto cache = utils::make_cache<meta_bdd, sylvan::BDD, sylvan::BDD> ();
+  template <typename Bdd, typename StateType>
+  auto upset<mmbdd_t<Bdd, StateType>>::full_zero_padded (const meta_bdd& s, Bdd all_zero) const {
+    static auto cache = utils::make_cache<meta_bdd, typename master_meta_bdd::state_t, int> ();
 
-    auto cached = cache.get (Bdd (s).GetBDD (), all_zero.GetBDD ());
+    auto cached = cache.get (s, all_zero.GetBDD ());
     if (cached)
       return *cached;
 
     if (s == mmbdd.full () or s == mmbdd.empty ())
-      return cache (s, Bdd (s).GetBDD (), all_zero.GetBDD ());
+      return cache (s, s, all_zero.GetBDD ());
 
     bool should_be_accepting = s.accepts ({}), zero_seen = false;
-    auto to_make = Bdd::bddZero ();
+    auto to_make = transition_type ();
 
-    for (auto&& [label, dest] : s.neighbors ()) {
+    for (auto&& [dest, labels] : s.neighbors ()) {
       if (dest == s)
-        to_make += label * mmbdd.self ();
+        to_make += labels * mmbdd.self ();
       else {
         auto new_dest = full_zero_padded (dest, all_zero);
         if (not should_be_accepting and
-            not zero_seen and not (label & all_zero).isZero ()) {
+            not zero_seen and not (labels & all_zero).isZero ()) {
           should_be_accepting = new_dest.accepts ({});
           zero_seen = true;
         }
-        to_make += label * new_dest;
+        to_make += labels * new_dest;
       }
     }
-    return cache (mmbdd.make (to_make, should_be_accepting), Bdd (s).GetBDD (), all_zero.GetBDD ());
+    return cache (mmbdd.make (to_make, should_be_accepting), s, all_zero.GetBDD ());
   }
 
-  meta_bdd upset<mmbdd_t>::plus_transducer_one_dim (size_t idx, size_t dim,
-                                                    upset::value_type delta,
-                                                    bool neg, bool carry,
-                                                    Bdd untouched_components) const {
+    template <typename Bdd, typename StateType>
+    auto upset<mmbdd_t<Bdd, StateType>>::plus_transducer_one_dim (size_t idx, size_t dim,
+                                                                  upset::value_type delta,
+                                                                  bool neg, bool carry,
+                                                                  Bdd untouched_components) const {
 #define local_args idx, dim, delta, neg, carry
     static auto cache = utils::make_cache<meta_bdd> (local_args);
     auto cached = cache.get (idx, dim, delta, neg, carry);
@@ -76,40 +81,40 @@ namespace upset {
       std::swap (var, var_mapped);
     bool b = delta & 1;
 
-    Bdd trans_nocarry = mmbdd.full (), trans_carry = mmbdd.full ();
+    auto dest_nocarry = mmbdd.full (), dest_carry = mmbdd.full ();
     if (delta == 0) {
       if (not carry) {
-        trans_nocarry = mmbdd.self ();
-        /* trans_carry unused */
+        dest_nocarry = mmbdd.self ();
+        /* dest_carry unused */
       }
       else {
-        trans_nocarry = plus_transducer_one_dim (idx, dim, 0, neg, false, untouched_components);
-        trans_carry = mmbdd.self ();
+        dest_nocarry = plus_transducer_one_dim (idx, dim, 0, neg, false, untouched_components);
+        dest_carry = mmbdd.self ();
       }
     }
     else {
       if (not (b and carry)) /* otherwise, a carry must be generated */
-        trans_nocarry = plus_transducer_one_dim (idx, dim, delta >> 1, neg, false, untouched_components);
+        dest_nocarry = plus_transducer_one_dim (idx, dim, delta >> 1, neg, false, untouched_components);
       if (b or carry) /* otherwise, no carry can be generated */
-        trans_carry = plus_transducer_one_dim (idx, dim, delta >> 1, neg, true, untouched_components);
+        dest_carry = plus_transducer_one_dim (idx, dim, delta >> 1, neg, true, untouched_components);
     }
 
-    auto trans = Bdd::bddOne ();
+    transition_type trans;
     if (b and carry)     // + 2
-      trans = !(var ^ var_mapped) * trans_carry;
+      trans = !(var ^ var_mapped) * untouched_components * dest_carry;
     else if (b or carry) // + 1
-      trans = var * !var_mapped * trans_carry +
-        !var * var_mapped * trans_nocarry;
+      trans = var * !var_mapped * untouched_components * dest_carry +
+        !var * var_mapped * untouched_components * dest_nocarry;
     else                 // + 0
-      trans = !(var ^ var_mapped) * trans_nocarry;
+      trans = !(var ^ var_mapped) * untouched_components * dest_nocarry;
 
-    return cache (mmbdd.make (trans * untouched_components, false), local_args);
+    return cache (mmbdd.make (trans, false), local_args);
 #undef local_args
   }
 
 
-
-  meta_bdd upset<mmbdd_t>::plus_transducer (
+  template <typename Bdd, typename StateType>
+  auto upset<mmbdd_t<Bdd, StateType>>::plus_transducer (
     const std::vector<upset::value_type>& delta,
     const std::vector<bool>& neg,
     const std::vector<bool>& carries) const {
@@ -121,7 +126,7 @@ namespace upset {
     // Main algo
     auto size = delta.size ();
     auto delta_shifted = std::vector<upset::value_type> (size);
-    Bdd full_trans = Bdd::bddZero ();
+    transition_type full_trans;
     bool all_zero_delta = true, all_zero_carries = true;
 
     for (size_t i = 0; i < size; ++i) {
@@ -244,7 +249,9 @@ namespace upset {
     return cache (mmbdd.make (full_trans, false), delta, neg, carries);
   }
 
-  upset<mmbdd_t>::upset (mmbdd_t& mmbdd, const std::vector<value_type>& v) :
+  template <typename Bdd, typename StateType>
+  upset<mmbdd_t<Bdd, StateType>>::upset (master_meta_bdd& mmbdd,
+                                         const std::vector<value_type>& v) :
     mmbdd {mmbdd}, mbdd {mmbdd.full ()}, dim {v.size ()} {
     static auto cache = utils::make_cache<meta_bdd> (v);
     auto cached = cache.get (v);
@@ -259,10 +266,11 @@ namespace upset {
     cache (mbdd, v);
   }
 
-  std::ostream& operator<< (std::ostream& out, const upset<mmbdd_t>& u) {
-    using value_t = upset<mmbdd_t>::value_type;
+  template <typename Bdd, typename StateType>
+  std::ostream& operator<< (std::ostream& out, const upset<mmbdd_t<Bdd, StateType>>& u) {
+    using value_t = upset<mmbdd_t<Bdd, StateType>>::value_type;
     std::set<std::vector<value_t>> snapshot, done;
-    snapshot.emplace (u.dim, 4);
+    snapshot.emplace (u.dim, 1);
 
     while (not snapshot.empty ()) {
       auto v = snapshot.extract (snapshot.begin ()).value ();

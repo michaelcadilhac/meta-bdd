@@ -8,8 +8,8 @@
 namespace MBDD {
 
   template <typename MMBdd>
-  std::vector<Bdd> bmeta_bdd<MMBdd>::one_word (bool accepted) const {
-    std::vector<Bdd> w;
+  std::vector<typename MMBdd::letter_type> bmeta_bdd<MMBdd>::one_word (bool accepted) const {
+    std::vector<letter_type> w;
     size_t cur_state = state;
     // Project delta on anything but self and !accepted
     while (true) {
@@ -26,9 +26,11 @@ namespace MBDD {
       auto future = mmbdd.delta[cur_state].UnivAbstract (dontwant).PickOneCube ();
 
       // Extract the state and label
-      auto label = Bdd::bddOne ();
+      letter_type label;
+      label = Bdd::bddOne ();
       size_t next_state = -1u;
       while (true) {
+        assert (cur_state != STATE_SELF);
         assert (not future.isTerminal ());
         auto var = future.TopVar ();
         if (is_varnumstate (var)) {

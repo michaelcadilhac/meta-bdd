@@ -1,19 +1,30 @@
 #include <algorithm>
-#include <upset.hh>
+
+#include <upset/upset_bdd.hh>
+
 using namespace std::literals;
+
+#include <labels/abcbdd.hh>
+#include <utils/bdd_io.hh>
 
 #include "tests.hh"
 
-auto mmbdd = MBDD::make_master_meta_bdd<sylvan::Bdd, MBDD::states_are_bddvars> ();
+auto mmbdd = MBDD::make_master_meta_bdd<labels::sylvanbdd, MBDD::states_are_ints> ();
 
-using upset_bdd = upset::upset<decltype (mmbdd)>;
+using mmbdd_t = decltype (mmbdd);
+using upset_bdd = upset::upset<mmbdd_t>;
 
 int main (int argc, char** argv) {
-  // Initialize sylvan
-  lace_start(0, 0);
-  sylvan::sylvan_set_sizes (1LL<<22, 1LL<<26, 1LL<<22, 1LL<<26);
-  sylvan::sylvan_init_package ();
-  sylvan::sylvan_init_bdd ();
+  if constexpr (std::is_same_v<mmbdd_t::letter_set_type, labels::sylvanbdd>) {
+    // Initialize sylvan
+    lace_start(0, 0);
+    sylvan::sylvan_set_sizes (1LL<<22, 1LL<<26, 1LL<<22, 1LL<<26);
+    sylvan::sylvan_init_package ();
+    sylvan::sylvan_init_bdd ();
+  }
+  else if constexpr (std::is_same_v<mmbdd_t::letter_set_type, labels::abcbdd>) {
+    utils::abcbdd::init (100, 1 << 20);
+  }
 
   // Initialize MBDD
   mmbdd.init ();
@@ -57,7 +68,9 @@ int main (int argc, char** argv) {
 
     [] () {
       auto u = upset_bdd (mmbdd, {0, 0});
+      std::cout << "mbdd: " << u.get_mbdd ();
       u += {1, 0};
+      std::cout << "mbdd: " << u.get_mbdd ();
       test (u.contains ({7, 3}));
       test (not u.contains ({0, 0}));
       test ((u | upset_bdd (mmbdd, {0, 0})).is_full ());
@@ -65,8 +78,21 @@ int main (int argc, char** argv) {
     },
 
     [] () {
+      auto u = upset_bdd (mmbdd, {0});
+      std::cout << "mbdd: " << u.get_mbdd ();
+      u += {1};
+      std::cout << "mbdd: " << u.get_mbdd ();
+      test (u.contains ({7}));
+      test (not u.contains ({0}));
+      test ((u | upset_bdd (mmbdd, {0})).is_full ());
+      test ((u & upset_bdd (mmbdd, {0})) == u);
+    },
+
+    [] () {
       auto u = upset_bdd (mmbdd, {2, 3});
+      std::cout << u.get_mbdd () << std::endl;
       u += {-1, 0};
+      std::cout << u.get_mbdd () << std::endl;
       test (u.contains ({2, 3}));
       test (u.contains ({1, 3}));
       test (not u.contains ({0, 3}));
@@ -159,7 +185,7 @@ int main (int argc, char** argv) {
                          and i3 >= v[3] and i4 >= v[4]));
       };
       full_test ({ 12, 11, 10, 9, 8 });
-    }
+    },
   };
 
   if (argc > 1 and argv[1] == "-x"sv) {

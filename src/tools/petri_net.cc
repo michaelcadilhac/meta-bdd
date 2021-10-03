@@ -134,12 +134,14 @@ namespace petri_pl {
           void on_success(Iterator const& first, Iterator const& last,
                           ast::target& target, Context const& context) {
             auto& pnet = x3::get<savers> (context).get ();
+            typename decltype (pnet.targets)::value_type target_to_push;
 
-            if (not pnet.target.empty ())
-              throw x3::expectation_failure (first, "no more targets (can only deal with one)");
             for (auto&& t : target.targets)
               for (auto&& p : flatten_place_and_weights (t, last, context))
-                pnet.target[p.first] = p.second;
+                target_to_push[p.first] = p.second;
+
+
+            pnet.targets.push_back (std::move (target_to_push));
           }
       };
 

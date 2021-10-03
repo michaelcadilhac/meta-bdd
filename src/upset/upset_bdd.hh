@@ -1,15 +1,29 @@
 #pragma once
 
 #include <upset.hh>
-#include <meta_bdd.hh>
+
+#include <meta_bdd_states_are_bddvars/meta_bdd.hh>
+#include <meta_bdd_states_are_ints/meta_bdd.hh>
+
 #include <utils/cache.hh>
+#include <utils/transduct_bdd.hh>
+
+#include <labels/sylvanbdd.hh>
+
+#include <sylvan.h>
+#include <sylvan_obj.hpp>
 
 namespace upset {
-  template <>
-  class upset<MBDD::master_meta_bdd<sylvan::Bdd, MBDD::states_are_bddvars>> {
-      using master_meta_bdd = MBDD::master_meta_bdd<sylvan::Bdd, MBDD::states_are_bddvars>;
+  // Sylvan requires that.
+  using namespace sylvan;
+
+  template <typename Bdd, typename StateType>
+  class upset<MBDD::master_meta_bdd<Bdd, StateType>> {
+      // Make sure we're dealing with a Bdd implementation
+      using has_bddone = decltype (Bdd::bddOne ());
+      using master_meta_bdd = MBDD::master_meta_bdd<Bdd, StateType>;
       using meta_bdd = master_meta_bdd::meta_bdd;
-      using Bdd = sylvan::Bdd;
+      using transition_type = master_meta_bdd::transition_type;
     public:
       // This must be signed since plus_transducers can decrement values.
       using value_type = ssize_t;
@@ -65,10 +79,13 @@ namespace upset {
 
         std::cout << "Computing transduction..." << std::endl;
         auto trans = plus_transducer (abs_v, neg, std::vector<bool> (v.size ()));
+        std::cout << "TRANS: " << trans << std::endl;
         std::cout << "Transducting..." << std::endl;
         auto tctd = transduct (trans);
+        std::cout << "TRANS'd: " << tctd.get_mbdd () << std::endl;
         std::cout << "Zero padding..." << std::endl;
         auto pdd = tctd.full_zero_padded ();
+        std::cout << "ZPDD'd: " << pdd.get_mbdd () << std::endl;
         std::cout << "Done." << std::endl;
         return pdd;
       }
@@ -121,13 +138,14 @@ namespace upset {
       bool contains (std::span<const value_type> sv) const {
         // Make a copy as we're going to shift all these values.
         std::vector<value_type> v (sv.begin (), sv.end ());
-        std::vector<Bdd> w;
+        std::vector<typename Bdd::letter_type> w;
 
         assert (v.size () == dim);
         bool is_zero = false;
         while (not is_zero) {
           is_zero = true;
-          Bdd bits = Bdd::bddOne ();
+          typename Bdd::letter_type bits;
+          bits = Bdd::bddOne ();
           for (size_t i = 0; i < dim; ++i) {
             bits *= (v[i] % 2) ? Bdd::bddVar (2 * i) : !Bdd::bddVar (2 * i);
             if ((v[i] >>= 1))
@@ -149,7 +167,7 @@ namespace upset {
         return mbdd;
       }
 
-      friend std::ostream& operator<< (std::ostream& out, const upset& v);
+      friend std::ostream& operator<< <> (std::ostream& out, const upset& v);
 
     private:
       master_meta_bdd& mmbdd;
@@ -162,7 +180,7 @@ namespace upset {
         if (value % 2 == 1)
           return mmbdd.make (Bdd::bddVar (2 * dim) * up_mbdd_high_branch (value >> 1, dim) +
                              !Bdd::bddVar (2 * dim) * up_mbdd_low_branch (value >> 1, dim), false);
-        return mmbdd.make (up_mbdd_high_branch (value >> 1, dim), false);
+        return mmbdd.make (Bdd::bddOne () * up_mbdd_high_branch (value >> 1, dim), false);
       }
 
       meta_bdd up_mbdd_low_branch (value_type value, size_t dim) {
@@ -172,12 +190,12 @@ namespace upset {
         if (value % 2 == 0)
           return mmbdd.make (Bdd::bddVar (2 * dim) * up_mbdd_high_branch (value >> 1, dim) +
                              !Bdd::bddVar (2 * dim) * up_mbdd_low_branch (value >> 1, dim), false);
-        return mmbdd.make (up_mbdd_low_branch (value >> 1, dim), false);
+        return mmbdd.make (Bdd::bddOne () * up_mbdd_low_branch (value >> 1, dim), false);
       }
 
-      meta_bdd bit_identities (size_t nbits) const;
+      auto bit_identities (size_t nbits) const;
 
-      meta_bdd full_zero_padded (const meta_bdd& s, Bdd all_zero) const;
+      auto full_zero_padded (const meta_bdd& s, Bdd all_zero) const;
 
       upset full_zero_padded () const {
         Bdd all_zero = Bdd::bddOne ();
@@ -188,14 +206,14 @@ namespace upset {
         return upset (mmbdd, full_zero_padded (mbdd, all_zero), dim);
       }
 
-      meta_bdd plus_transducer_one_dim (size_t idx, size_t dim,
-                                        value_type delta,
-                                        bool neg, bool carry,
-                                        Bdd untouched_components) const;
+      auto plus_transducer_one_dim (size_t idx, size_t dim,
+                                    value_type delta,
+                                    bool neg, bool carry,
+                                    Bdd untouched_components) const;
 
-      meta_bdd plus_transducer (const std::vector<value_type>& delta,
-                                const std::vector<bool>& neg,
-                                const std::vector<bool>& carries) const;
+      auto plus_transducer (const std::vector<value_type>& delta,
+                            const std::vector<bool>& neg,
+                            const std::vector<bool>& carries) const;
 
       upset transduct (const meta_bdd& trans) const {
         std::vector<Bdd> ins (dim), outs (dim);
@@ -204,7 +222,9 @@ namespace upset {
           outs[i] = Bdd::bddVar (2 * i + 1);
         }
 
-        return upset (mmbdd, mbdd.transduct (trans, outs, ins), dim);
+        return upset (mmbdd, utils::transduct (mbdd, trans, outs, ins), dim);
       }
   };
 }
+
+#include <upset/upset_bdd.hxx>

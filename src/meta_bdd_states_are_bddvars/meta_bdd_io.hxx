@@ -2,7 +2,8 @@
 #include <iostream>
 #include <set>
 
-#include "meta_bdd_states_are_bddvars/meta_bdd.hh"
+#include <utils/bdd_io.hh>
+#include <meta_bdd_states_are_bddvars/meta_bdd.hh>
 
 namespace MBDD {
 
@@ -10,55 +11,16 @@ namespace MBDD {
     std::string var;
     if (is_varnumstate (varnum)) {
       auto state = varnum_to_state (varnum);
+
+      if (state == STATE_SELF)
+        return std::string ("SELF");
       var = "q" + std::to_string (state);
       if (is_varnumstate (varnum, Prime::yes))
         var += "'";
     }
-    else if (varnum == VARNUM_SELF)
-      var = "SELF";
     else
       var = "x" + std::to_string (varnum);
     return var;
-  }
-
-  template <typename F = decltype (varnum_to_name_state_aware)>
-  static void print_bdd (const Bdd& t, std::ostream& os = std::cout, F var_to_name = varnum_to_name_state_aware) {
-    if (t.isZero ()) { os << "F"; return; }
-    if (t.isOne ())  { os << "T"; return; }
-
-    std::string var = var_to_name (t.TopVar ());
-
-    if (t.Then ().isTerminal () and t.Else ().isTerminal ()) { // Boolean
-      if (t.Then ().isOne () and t.Else ().isZero ())
-        os << var;
-      else {
-        assert (t.Then ().isZero () and t.Else ().isOne ());
-        os << "!" << var;
-      }
-    }
-    else if (t.Then ().isTerminal ()) {
-      if (t.Then ().isZero ())
-        os << "(!" << var << "&&";
-      else
-        os << "(" << var << "||";
-      print_bdd (t.Else (), os, var_to_name);
-      os << ")";
-    }
-    else if (t.Else ().isTerminal ()) {
-      if (t.Else ().isZero ())
-        os << "(" << var << "&&";
-      else
-        os << "(!" << var << "||";
-      print_bdd (t.Then (), os, var_to_name);
-      os << ")";
-    }
-    else {
-      os << "(" << var << "&&";
-      print_bdd (t.Then (), os, var_to_name);
-      os << "||!" << var << "&&";
-      print_bdd (t.Else (), os, var_to_name);
-      os << ")";
-    }
   }
 
   template <typename MMBdd>
@@ -67,9 +29,6 @@ namespace MBDD {
     b.print (os, already_printed);
     return os;
   }
-  // make sure it's instanciated:
-  template std::ostream& operator<< (std::ostream& os, const bmeta_bdd<master_bmeta_bdd>& b);
-  template std::ostream& operator<< (std::ostream& os, const bmeta_bdd<const master_bmeta_bdd>& b);
 
   template <typename MMBdd>
   void bmeta_bdd<MMBdd>::print (std::ostream& os, std::set<size_t>& already_printed) const {
@@ -77,7 +36,6 @@ namespace MBDD {
 
     os << state;
     already_printed.insert (state);
-
 
     auto trans = mmbdd.delta[state];
 
@@ -87,15 +45,15 @@ namespace MBDD {
     os << ": ";
 
     // To prettify, remove the EMPTY state.
-    print_bdd (trans.Compose (BddMap (VARNUM_EMPTY, Bdd::bddZero ())),
-               os, [&successors, &already_printed] (size_t varnum) {
-      if (is_varnumstate (varnum)) {
-        auto succ = varnum_to_state (varnum);
-        if (not already_printed.contains (succ))
-          successors.insert (succ);
-      }
-      return varnum_to_name_state_aware (varnum);
-    });
+    utils::print_bdd (trans.Compose (sylvan::BddMap (VARNUM_EMPTY, Bdd::bddZero ())),
+                      os, [&successors, &already_printed] (size_t varnum) {
+                        if (is_varnumstate (varnum)) {
+                          auto succ = varnum_to_state (varnum);
+                          if (not already_printed.contains (succ))
+                            successors.insert (succ);
+                        }
+                        return varnum_to_name_state_aware (varnum);
+                      });
 
     os << "\n";
 
@@ -104,27 +62,9 @@ namespace MBDD {
   }
 }
 
-std::ostream& std::operator<< (std::ostream& os, const sylvan::Bdd& l) {
-  MBDD::print_bdd (l, os);
-  return os;
-}
-
-std::ostream& std::operator<< (std::ostream& os, const std::vector<sylvan::Bdd>& w) {
-  bool first = true;
-
-  for (auto&& l : w) {
-    if (not first)
-      os << ", ";
-    first = false;
-    os << l;
-  }
-  return os;
-}
-
-#ifndef NDEBUG
-[[maybe_unused]] static auto gdb_print_bdd (const sylvan::Bdd& bdd) {
-  std::ostringstream buffer;
-  MBDD::print_bdd (bdd, buffer);
-  return buffer.str ();
-}
-#endif
+template <>
+struct utils::bdd_io_traits<labels::sylvanbdd::letter_type> {
+    static constexpr auto printer = [] (const labels::sylvanbdd::letter_type& bdd, std::ostream& os) {
+      print_bdd (bdd, os, MBDD::varnum_to_name_state_aware);
+    };
+};

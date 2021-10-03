@@ -13,7 +13,7 @@ namespace MBDD {
   template <typename MMBdd>
   template <typename Map, typename Hash, typename, typename EnabledOnlyIfMMBddIsNotConst>
   bmeta_bdd<MMBdd> bmeta_bdd<MMBdd>::intersection_union (const bmeta_bdd& other, bool intersection,
-                                                       const Map& map, const Hash& map_hash) const {
+                                                         const Map& map, const Hash& map_hash) const {
     typedef std::tuple<size_t, size_t, bool, Hash> tuple_t;
     static std::map<tuple_t, size_t> iu_cache;
 
@@ -116,7 +116,7 @@ namespace MBDD {
           // Looping
           if (((dest_states[0] == state and dest_states[1] == other.state) or
                (dest_states[1] == state and dest_states[0] == other.state)))
-            merge_state = -1u; // We use -1 to signal SELF.
+            merge_state = STATE_SELF;
           else
             // Recursive call:
             merge_state =
@@ -127,7 +127,7 @@ namespace MBDD {
 
         // Build the new transition.
         auto this_label = map (conj_for_dest);
-        if (merge_state == -1u /* SELF */ or (all_labels & this_label).isZero ()) {
+        if (merge_state == STATE_SELF or (all_labels & this_label).isZero ()) {
           // If we reached here because we're self looping, check that we are
           // indeed deterministic.  This is for transductions, and is guaranteed
           // by post-unambiguity:
@@ -149,11 +149,10 @@ namespace MBDD {
               // Because of transductions, it can happen that it->second is
               // SELF, but this is ruled out by post-unambiguity.
               assert (((void) "Transduction is post-ambiguous.",
-                       it->second != -1u));
+                       it->second != STATE_SELF));
               auto union_merge_state =
                 /* union, no map, as this is after the map has been applied. */
                 (bmeta_bdd (mmbdd, merge_state) | bmeta_bdd (mmbdd, it->second)).state;
-              to_make.erase (it);
               to_make.emplace_back (conj, union_merge_state);
               conj = this_label & (!it->first);
               if (not conj.isZero ())
@@ -161,6 +160,7 @@ namespace MBDD {
               conj = (!this_label) & it->first;
               if (not conj.isZero ())
                 to_make.emplace_back (conj, it->second);
+              to_make.erase (it);
               break;
             }
           }
@@ -171,7 +171,7 @@ namespace MBDD {
 
     Bdd target = Bdd::bddZero ();
     for (auto&& p : to_make)
-      target += p.first * (p.second == -1u ? BDDVAR_SELF : state_to_bddvar (p.second));
+      target += p.first * state_to_bddvar (p.second);
 
     return cache (
       mmbdd.make (target,
@@ -195,25 +195,9 @@ namespace MBDD {
 
   /* Transduction is seen as an intersection with projection. */
   template <typename MMBdd>
-  template <typename, typename EnabledOnlyIfMMBddIsNotConst>
+  template <typename Map, typename Hash, typename, typename EnabledOnlyIfMMBddIsNotConst>
   bmeta_bdd<MMBdd> bmeta_bdd<MMBdd>::transduct (const bmeta_bdd& other,
-                                    std::span<const Bdd> output_vars,
-                                    std::span<const Bdd> to_vars) const {
-    assert (output_vars.size () == to_vars.size () and output_vars.size () != 0);
-    // Construct the map output_var -> to_var.
-    BddMap m;
-    Bdd bddoutputvars = Bdd::bddOne ();
-    for (size_t i = 0; i < output_vars.size (); ++i) {
-      m.put (output_vars[i].TopVar (), to_vars[i]);
-      bddoutputvars *= output_vars[i];
-    }
-
-    return intersection_union (
-      other, true,
-      [&bddoutputvars, &m] (const Bdd& b) {
-        return Bdd (sylvan_project (b.GetBDD (), bddoutputvars.GetBDD ())).Compose (m);
-      },
-      *((size_t*) &m) // This is because BddMap doesn't expose the Bdd.
-      );
+                                                Map map, const Hash& hash) const {
+    return intersection_union (other, true, map, hash);
   }
 }

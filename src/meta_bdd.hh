@@ -27,13 +27,13 @@ namespace MBDD {
   struct states_are_bddvars;
   struct states_are_ints;
 
-  template <typename BitVectorSet, typename StateType>
+  enum constant_states { STATE_SELF = 0ul, STATE_EMPTY, STATE_FULL };
+
+  template <typename LetterSet, typename StateType>
   class master_meta_bdd;
 
-  template <typename BitVectorSet, typename StateType>
+  template <typename LetterSet, typename StateType>
   auto make_master_meta_bdd () {
-    return master_meta_bdd<BitVectorSet, StateType> ();
+    return master_meta_bdd<LetterSet, StateType> ();
   }
 }
-
-#include "meta_bdd_states_are_bddvars/meta_bdd.hh"

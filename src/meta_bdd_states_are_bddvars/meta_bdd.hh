@@ -7,22 +7,18 @@
 #include <set>
 #include <vector>
 #include <map>
+#include <deque>
+
 #include <functional>
 
 #include <iostream>
 #include <cassert>
-
 #include <meta_bdd.hh>
+#include <labels/sylvanbdd.hh>
 
-// Helper pretty printing.
-namespace std {
-  std::ostream& operator<< (std::ostream& os, const sylvan::Bdd& w);
-  std::ostream& operator<< (std::ostream& os, const std::vector<sylvan::Bdd>& w);
-}
-
+#include <utils/bdd_io.hh>
 
 namespace MBDD {
-  using namespace sylvan;
 
   // For each state, we have both a regular version and a "prime" version that can be
   // useful when dealing with two meta bdds.
@@ -39,10 +35,8 @@ namespace MBDD {
     return sylvan::Bdd::bddVar (state_to_varnum (state, p));
   }
 
-  static const size_t VARNUM_SELF = state_to_varnum (0) - 1;
+#define VARNUM_SELF (state_to_varnum (STATE_SELF))
 #define BDDVAR_SELF (Bdd::bddVar (VARNUM_SELF))
-
-  static const size_t STATE_EMPTY = 0, STATE_FULL = 1;
 
 #define VARNUM_FULL (state_to_varnum (STATE_FULL))
 #define BDDVAR_FULL (Bdd::bddVar (VARNUM_FULL))
@@ -69,7 +63,7 @@ namespace MBDD {
   }
 
   // "local" aliases
-  using master_bmeta_bdd = master_meta_bdd<sylvan::Bdd, states_are_bddvars>;
+  using master_bmeta_bdd = master_meta_bdd<labels::sylvanbdd, states_are_bddvars>;
 
   template <typename MMBdd>
   class bmeta_bdd {
@@ -78,6 +72,10 @@ namespace MBDD {
 
       template <typename T>
       using force_const = std::enable_if_t<not std::is_const<T>::value>;
+      using Bdd = MMBdd::letter_set_type;
+      using letter_type = MMBdd::letter_type;
+
+      using state_t = typename MMBdd::state_t;
 
     public:
       bmeta_bdd (MMBdd& mmbdd) : mmbdd {mmbdd}, state (STATE_EMPTY) {}
@@ -85,7 +83,7 @@ namespace MBDD {
         mmbdd {mmbdd}, state (varnum_to_state (bdd.TopVar ())) {
         assert (is_varnumstate (bdd.TopVar ()));
       }
-      bmeta_bdd (MMBdd& mmbdd, size_t state) : mmbdd {mmbdd}, state (state) {}
+      bmeta_bdd (MMBdd& mmbdd, state_t state) : mmbdd {mmbdd}, state (state) {}
 
       template <typename T = MMBdd>//, std::enable_if_t<std::is_const<T>::value>>
       operator bmeta_bdd<const MMBdd> () const { return bmeta_bdd<const MMBdd> (mmbdd, state); }
@@ -99,7 +97,7 @@ namespace MBDD {
 
       auto neighbors () const;
 
-      std::vector<Bdd> one_word (bool accepted = true) const;
+      std::vector<letter_type> one_word (bool accepted = true) const;
 
       bmeta_bdd one_step (const Bdd& l) const;
 
@@ -123,20 +121,14 @@ namespace MBDD {
       template <typename T = MMBdd, typename = force_const<T>>
       bmeta_bdd operator| (const bmeta_bdd& other) const;
 
-      template <typename T = MMBdd, typename = force_const<T>>
-      bmeta_bdd transduct (const bmeta_bdd& other,
-                           std::span<const Bdd> output_vars, std::span<const Bdd> to_vars) const;
-
-      template <typename T = MMBdd, typename = force_const<T>>
-      bmeta_bdd transduct (const bmeta_bdd& other,
-                           std::initializer_list<const Bdd> output_vars,
-                           std::initializer_list<const Bdd> to_vars) const {
-        return transduct (other, std::span (output_vars), std::span (to_vars));
-      }
+      template <typename Map, typename Hash, typename T = MMBdd, typename = force_const<T>>
+      bmeta_bdd transduct (const bmeta_bdd& other, Map map, const Hash& hash) const;
 
       template<typename Map,
                typename T = MMBdd, typename = force_const<T>>
       bmeta_bdd apply (Map map) const;
+
+      operator state_t () const { return state; }
 
     private:
       MMBdd& mmbdd;
@@ -149,21 +141,30 @@ namespace MBDD {
 
       template <typename T>
       friend std::ostream& operator<< (std::ostream& os, const bmeta_bdd<T>& b);
+
       void print (std::ostream& os, std::set<size_t>& already_printed) const;
   };
 
-  template <typename MMBdd>
-  std::ostream& operator<< (std::ostream& os, const bmeta_bdd<MMBdd>& b);
-
+  /* This class is only marginally adaptable to other BDD libraries at the moment. */
   template <>
-  class master_meta_bdd<sylvan::Bdd, states_are_bddvars> {
+  class master_meta_bdd<labels::sylvanbdd, states_are_bddvars> {
     public:
       using meta_bdd = bmeta_bdd<master_meta_bdd>;
       using const_meta_bdd = bmeta_bdd<const master_meta_bdd>;
+      using letter_set_type = labels::sylvanbdd;
+      using letter_type = letter_set_type::letter_type;
+      using Bdd = letter_set_type;
+      using transition_type = letter_set_type;
+      using state_t = size_t;
+
+      using BddSet = sylvan::BddSet;
+      using BddMap = sylvan::BddMap;
+      using BDD = decltype (Bdd ().GetBDD ());
+
       friend meta_bdd;
       friend const_meta_bdd;
 
-      master_meta_bdd () : delta (2) { }
+      master_meta_bdd () : delta (3) { }
 
       void init () {
         statevars = BDDVAR_SELF * BDDVAR_FULL * BDDVAR_EMPTY;
@@ -182,9 +183,9 @@ namespace MBDD {
         trans_to_state_self[REJ][BDDVAR_SELF.GetBDD ()] = STATE_EMPTY;
       }
 
-      auto full ()  { return bmeta_bdd (*this,   STATE_FULL); }
-      auto empty () { return bmeta_bdd (*this,   STATE_EMPTY); }
-      auto self ()  { return Bdd::bddVar (VARNUM_SELF); }
+      auto full ()  { return bmeta_bdd (*this, STATE_FULL);  }
+      auto empty () { return bmeta_bdd (*this, STATE_EMPTY); }
+      auto self ()  { return bmeta_bdd (*this, STATE_SELF);  }
 
       struct iterator {
           iterator (const master_bmeta_bdd& mmbdd, bool end) :
@@ -194,7 +195,7 @@ namespace MBDD {
 
           bool operator== (const iterator& other) const { return state == other.state; }
           bool operator!= (const iterator& other) const { return state != other.state; }
-          auto operator++ ();
+          auto operator++ () { if (++state == mmbdd.delta.size ()) state = -1u; return *this; }
           auto operator* () const { return bmeta_bdd (mmbdd, state); }
 
         private:
@@ -206,6 +207,7 @@ namespace MBDD {
       const auto end () const { return iterator (*this, true); }
 
       auto find (Bdd trans, bool is_accepting) const {
+        using sylvan::sylvan_project_RUN;
         auto x = Bdd (sylvan_project (trans.GetBDD (), (statevars * BDDVAR_SELF).GetBDD ()));
         auto dests = BddSet (x.Support ());
 
@@ -291,6 +293,7 @@ namespace MBDD {
       }
 
       Bdd project_to_statevars (const Bdd& t) const {
+        using sylvan::sylvan_project_RUN;
         return Bdd (sylvan_project (t.GetBDD (), statevars.GetBDD ()));
       }
 

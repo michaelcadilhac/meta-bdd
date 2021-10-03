@@ -2,12 +2,18 @@
 #include <iostream>
 #include <fstream>
 #include <queue>
+#include <list>
 
 #include <upset.hh>
+#include <upset/upset_bdd.hh>
+
+#include <labels/sylvanbdd.hh>
+
 #include "petri_net.hh"
 
-auto mmbdd = MBDD::make_master_meta_bdd<sylvan::Bdd, MBDD::states_are_bddvars> ();
-using upset_bdd = upset::upset<decltype (mmbdd)>;
+auto mmbdd = MBDD::make_master_meta_bdd<labels::sylvanbdd, MBDD::states_are_ints> ();
+using mmbdd_t = decltype (mmbdd);
+using upset_bdd = upset::upset<mmbdd_t>;
 
 using value_t = upset_bdd::value_type;
 
@@ -56,24 +62,29 @@ std::ostream& operator<< (std::ostream& out, const std::vector<T>& v) {
 }
 
 static bool backward_coverability (const std::vector<value_t>& init,
-                                   const std::vector<value_t>& target,
+                                   std::list<std::vector<value_t>>& targets,
                                    const std::vector<transition_view>& transitions) {
-  auto B = upset_bdd (mmbdd, target), Bprime = B;
+  auto B = upset_bdd (mmbdd, targets.front ()), Bprime = B;
+
+  targets.pop_front ();
+  for (auto&& el : targets)
+    B |= upset_bdd (mmbdd, el);
+
   size_t i = 0;
 
   do {
     std::cout << "Loop #" << i++ << std::endl;
-    //std::cout << "Bprime is: " << Bprime << std::endl;
+    std::cout << "Bprime is: " << Bprime.get_mbdd () << std::endl;
 
 
     B = Bprime;
     for (auto&& t : transitions) {
       std::cout << "Applying transition deltas " << t.backward_deltas << std::endl;
       auto mt = (B + t.backward_deltas);
-      //std::cout << "mt is: " << mt << std::endl;
+      std::cout << "mt is: " << mt.get_mbdd () << std::endl;
       std::cout << "Applying transition budgets " << t.budgets << std::endl;
       mt &= t.budgets;
-      //std::cout << "mt is: " << mt << std::endl;
+      std::cout << "mt is: " << mt.get_mbdd () << std::endl;
       std::cout << "Adding to Bprime" << std::endl;
       if (mt.contains (init))
         return true;
@@ -88,11 +99,19 @@ int main (int argc, char* argv[]) {
   if (argc != 2)
     return 1;
 
-  // Initialize sylvan
-  lace_start(0, 0);
-  sylvan::sylvan_set_sizes (1LL<<22, 1LL<<26, 1LL<<22, 1LL<<26);
-  sylvan::sylvan_init_package ();
-  sylvan::sylvan_init_bdd ();
+  constexpr static auto is_sylvan = std::is_same_v<mmbdd_t::letter_set_type, labels::sylvanbdd>;
+  constexpr auto is_abc = std::is_same_v<mmbdd_t::letter_set_type, labels::abcbdd>;
+
+  if constexpr (is_sylvan) {
+    // Initialize sylvan
+    lace_start(0, /* dqsize = */ 1000000);
+    sylvan::sylvan_set_sizes (1LL<<22, 1LL<<26, 1LL<<22, 1LL<<26);
+    sylvan::sylvan_init_package ();
+    sylvan::sylvan_init_bdd ();
+  }
+  else if constexpr (is_abc) {
+    utils::abcbdd::init (100, 1 << 26);
+  }
 
   // Initialize MBDD
   mmbdd.init ();
@@ -102,9 +121,11 @@ int main (int argc, char* argv[]) {
 
     auto transitions = get_transition_views (pnet);
     auto init = map_to_vec (pnet.get_init (), pnet.num_places ());
-    auto target = map_to_vec (pnet.get_target (), pnet.num_places ());
+    auto targets = std::list<decltype (init)> ();
+    for (auto&& el : pnet.get_targets ())
+      targets.push_back (map_to_vec (el, pnet.num_places ()));
 
-    if (backward_coverability (init, target, transitions))
+    if (backward_coverability (init, targets, transitions))
       std::cout << "COVERABLE" << std::endl;
     else
       std::cout << "NOT COVERABLE" << std::endl;
