@@ -68,7 +68,7 @@ namespace upset {
                                                                   Bdd untouched_components) const {
 #define local_args idx, dim, delta, neg, carry
     static auto cache = utils::make_cache<meta_bdd> (local_args);
-    auto cached = cache.get (idx, dim, delta, neg, carry);
+    auto cached = cache.get (local_args);
     if (cached)
       return *cached;
 
@@ -83,14 +83,9 @@ namespace upset {
 
     auto dest_nocarry = mmbdd.full (), dest_carry = mmbdd.full ();
     if (delta == 0) {
-      if (not carry) {
-        dest_nocarry = mmbdd.self ();
-        /* dest_carry unused */
-      }
-      else {
-        dest_nocarry = plus_transducer_one_dim (idx, dim, 0, neg, false, untouched_components);
-        dest_carry = mmbdd.self ();
-      }
+      assert (carry);
+      dest_nocarry = plus_transducer_one_dim (idx, dim, 0, neg, false, untouched_components);
+      dest_carry = mmbdd.self ();
     }
     else {
       if (not (b and carry)) /* otherwise, a carry must be generated */

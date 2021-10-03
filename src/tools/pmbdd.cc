@@ -5,6 +5,7 @@
 #include <list>
 
 #include <upset.hh>
+#include <upset/upset_adhoc.hh>
 #include <upset/upset_bdd.hh>
 
 #include <labels/sylvanbdd.hh>
@@ -13,7 +14,7 @@
 
 auto mmbdd = MBDD::make_master_meta_bdd<labels::sylvanbdd, MBDD::states_are_ints> ();
 using mmbdd_t = decltype (mmbdd);
-using upset_bdd = upset::upset<mmbdd_t>;
+using upset_bdd = upset::upset_adhoc<mmbdd_t>;
 
 using value_t = upset_bdd::value_type;
 
@@ -74,17 +75,12 @@ static bool backward_coverability (const std::vector<value_t>& init,
 
   do {
     std::cout << "Loop #" << i++ << std::endl;
-    std::cout << "Bprime is: " << Bprime.get_mbdd () << std::endl;
-
-
     B = Bprime;
     for (auto&& t : transitions) {
       std::cout << "Applying transition deltas " << t.backward_deltas << std::endl;
       auto mt = (B + t.backward_deltas);
-      std::cout << "mt is: " << mt.get_mbdd () << std::endl;
       std::cout << "Applying transition budgets " << t.budgets << std::endl;
       mt &= t.budgets;
-      std::cout << "mt is: " << mt.get_mbdd () << std::endl;
       std::cout << "Adding to Bprime" << std::endl;
       if (mt.contains (init))
         return true;

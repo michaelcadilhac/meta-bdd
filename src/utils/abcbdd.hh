@@ -1,9 +1,13 @@
 #pragma once
+#include <map>
 #include "abcbdd.hxx"
 
 namespace utils {
   namespace d = detail;
   class abcbdd {
+    public:
+      using remap_t = std::map<int, abcbdd>;
+
     private:
       abcbdd (const int bdd) : bdd {bdd} {}
 
@@ -43,6 +47,17 @@ namespace utils {
       abcbdd Else () const { return d::Abc_BddElse (d::global_bddman, bdd); }
       abcbdd And (const abcbdd& other) const { return d::Abc_BddAnd (d::global_bddman, bdd, other.bdd); }
       abcbdd Or (const abcbdd& other) const { return d::Abc_BddOr (d::global_bddman, bdd, other.bdd); }
+
+      abcbdd Remap (const remap_t& map) const {
+        if (isZero () or isOne ()) return *this;
+        auto var = TopVar ();
+        auto el = map.find (var);
+        auto mapped_to = bddVar (var);
+        if (el != map.end ()) // preserve
+          mapped_to = el->second;
+        return mapped_to * Then ().Remap (map) |
+          !mapped_to * Else ().Remap (map);
+      }
 
       auto GetBDD () const { return bdd; }
 

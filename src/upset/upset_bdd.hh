@@ -90,6 +90,10 @@ namespace upset {
         return pdd;
       }
 
+      upset operator+ (const std::vector<value_type> v) const {
+        return *this + std::span (v);
+      }
+
       upset operator+ (std::span<const value_type> v) const {
         auto new_upset = *this;
 
