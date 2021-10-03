@@ -8,10 +8,12 @@ using utils::transduct;
 
 #include <labels/sylvanbdd.hh>
 #include <labels/abcbdd.hh>
+#include <labels/buddybdd.hh>
 #include "tests.hh"
 
+masterbdd global_mbuddy;
 
-auto mmbdd = MBDD::make_master_meta_bdd<labels::abcbdd, MBDD::states_are_ints> ();
+auto mmbdd = MBDD::make_master_meta_bdd<labels::buddybdd, MBDD::states_are_ints> ();
 using mmbdd_t = decltype (mmbdd);
 
 using letter_type = decltype (mmbdd)::letter_type;
@@ -31,7 +33,8 @@ auto flat_automaton (std::initializer_list<letter_type> w) {
 
 int main () {
   constexpr static auto is_sylvan = std::is_same_v<mmbdd_t::letter_set_type, labels::sylvanbdd>;
-  constexpr auto is_abc = std::is_same_v<mmbdd_t::letter_set_type, labels::abcbdd>;
+  constexpr static auto is_abc = std::is_same_v<mmbdd_t::letter_set_type, labels::abcbdd>;
+  constexpr static auto is_buddy = std::is_same_v<mmbdd_t::letter_set_type, labels::buddybdd>;
 
   using Bdd = mmbdd_t::letter_set_type;
 
@@ -44,6 +47,9 @@ int main () {
   }
   else if constexpr (is_abc) {
     utils::abcbdd::init (100, 1 << 20);
+  }
+  else if constexpr (is_buddy) {
+    utils::buddybdd::init (100, 1 << 20);
   }
 
   mmbdd.init ();

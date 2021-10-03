@@ -9,9 +9,9 @@ using utils::transduct;
 #include "tests.hh"
 
 
-using namespace sylvan;
-
 auto mmbdd = MBDD::make_master_meta_bdd<labels::sylvanbdd, MBDD::states_are_bddvars> ();
+using mmbdd_t = decltype (mmbdd);
+using Bdd = mmbdd_t::letter_set_type;
 
 auto flat_automaton (std::span<const Bdd> w) {
   assert (w.size () > 0);
@@ -28,9 +28,9 @@ auto flat_automaton (std::initializer_list<Bdd> w) {
 int main () {
   // Initialize sylvan
   lace_start(0, 0);
-  sylvan_set_sizes (1LL<<22, 1LL<<26, 1LL<<22, 1LL<<26);
-  sylvan_init_package ();
-  sylvan_init_bdd ();
+  sylvan::sylvan_set_sizes (1LL<<22, 1LL<<26, 1LL<<22, 1LL<<26);
+  sylvan::sylvan_init_package ();
+  sylvan::sylvan_init_bdd ();
 
   // Initialize MBDD
   mmbdd.init ();
@@ -174,7 +174,7 @@ int main () {
   test (comp2 != comp3);
 
   {
-    BddMap m;
+    sylvan::BddMap m;
     m.put (x0.TopVar (), x1);
     m.put (x1.TopVar (), x2);
     auto mod = comp3.apply ([&] (Bdd b) { return b.Compose (m); });
@@ -201,7 +201,7 @@ int main () {
   {
     auto q1 = flat_automaton ({x0, !x0, Bdd::bddZero (), x1, x1});
     auto q = q1.apply ([&] (const Bdd& b) {
-      return b.Compose (BddMap (x1.TopVar (), x2));
+      return b.Compose (sylvan::BddMap (x1.TopVar (), x2));
     });
     test (q.accepts ({ !x0 * x2, x2 }));
     test (q.accepts (
@@ -215,7 +215,7 @@ int main () {
             }));
   }
 
-  sylvan_quit();
+  sylvan::sylvan_quit();
 
   return global_res ? 0 : 1;
 }

@@ -11,9 +11,46 @@
 namespace utils {
 
   /* Transduction is seen as an intersection with projection. */
+
+  template <typename Bdd>
+  inline Bdd transduct_map (const Bdd& bdd,
+                            const std::map<int, int>& map) {
+    if (bdd.isZero () or bdd.isOne ()) return bdd;
+    auto var = bdd.TopVar ();
+    auto el = map.find (var);
+
+    if (el == map.end ())
+      return transduct_map (bdd.Then (), map) | transduct_map (bdd.Else (), map);
+    return Bdd::bddVar (el->second) * transduct_map (bdd.Then (), map) |
+      !Bdd::bddVar (el->second) * transduct_map (bdd.Else (), map);
+  }
+
+  /* Transduction is seen as an intersection with projection. */
+  template <typename Bdd>
   static auto transduct (auto&& state, auto&& trans,
-                         std::vector<labels::sylvanbdd> output_vars,
-                         std::vector<labels::sylvanbdd> to_vars) {
+                         std::vector<Bdd> output_vars,
+                         std::vector<Bdd> to_vars) {
+    static auto cache = make_cache<std::map<int, int>> (output_vars, to_vars);
+    auto cached = cache.get (output_vars, to_vars);
+    std::remove_reference_t<decltype (*cached)>* p_map = nullptr;
+    if (cached)
+      p_map = &(*cached);
+    else {
+      std::remove_cvref_t<decltype (*p_map)> map;
+      for (size_t i = 0; i < output_vars.size (); ++i)
+        map[output_vars[i].TopVar ()] = to_vars[i].TopVar ();
+      p_map = &(cache (std::move (map), output_vars, to_vars));
+    }
+
+    return state.transduct (trans,
+                            [p_map] (auto&& l) { return transduct_map (l, *p_map); },
+                            p_map);
+  }
+
+  template <class T1, class T2>
+  static auto transduct(T1&& state, T2&& trans,
+                        std::vector<labels::sylvanbdd> output_vars,
+                        std::vector<labels::sylvanbdd> to_vars) {
     using sylvan::sylvan_project_RUN;
     using Bdd = sylvan::Bdd;
     using BddMap = sylvan::BddMap;
@@ -35,36 +72,12 @@ namespace utils {
       );
   }
 
-  inline abcbdd transduct_map (const abcbdd& bdd,
-                               const std::map<int, int>& map) {
-    if (bdd.isZero () or bdd.isOne ()) return bdd;
-    auto var = bdd.TopVar ();
-    auto el = map.find (var);
-
-    if (el == map.end ())
-      return transduct_map (bdd.Then (), map) | transduct_map (bdd.Else (), map);
-    return abcbdd::bddVar (el->second) * transduct_map (bdd.Then (), map) |
-      !abcbdd::bddVar (el->second) * transduct_map (bdd.Else (), map);
-  }
-
-  /* Transduction is seen as an intersection with projection. */
+  template <typename Bdd>
   static auto transduct (auto&& state, auto&& trans,
-                         std::vector<labels::abcbdd> output_vars,
-                         std::vector<labels::abcbdd> to_vars) {
-    static auto cache = make_cache<std::map<int, int>> (output_vars, to_vars);
-    auto cached = cache.get (output_vars, to_vars);
-    std::remove_reference_t<decltype (*cached)>* p_map = nullptr;
-    if (cached)
-      p_map = &(*cached);
-    else {
-      std::remove_cvref_t<decltype (*p_map)> map;
-      for (size_t i = 0; i < output_vars.size (); ++i)
-        map[output_vars[i].TopVar ()] = to_vars[i].TopVar ();
-      p_map = &(cache (std::move (map), output_vars, to_vars));
-    }
-
-    return state.transduct (trans,
-                            [p_map] (auto&& l) { return transduct_map (l, *p_map); },
-                            p_map);
+                         std::initializer_list<Bdd> output_vars,
+                         std::initializer_list<Bdd> to_vars) {
+    return transduct (state, trans, std::vector (output_vars), std::vector (to_vars));
   }
+
+
 }

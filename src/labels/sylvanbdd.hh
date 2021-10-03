@@ -14,18 +14,23 @@ namespace labels {
   };
 
   class sylvanbdd : public sylvan::Bdd {
+      using upper = sylvan::Bdd;
     public:
-      sylvanbdd () : sylvan::Bdd () {}
-      sylvanbdd (const sylvan::Bdd& b) : sylvan::Bdd (b) {}
+      sylvanbdd () : upper () {}
+      sylvanbdd (const upper& b) : upper (b) {}
       using letter_type = sylvanbdd_letter;
 
       static sylvanbdd fullset () {
-        return sylvanbdd (sylvan::Bdd::bddOne ());
+        return sylvanbdd (upper::bddOne ());
       }
 
       sylvanbdd operator* (const sylvanbdd& other) const {
-        return sylvan::Bdd::operator* (other);
+        return upper::operator* (other);
       }
+
+      static sylvanbdd bddVar (int idx) { return upper::bddVar (idx); }
+      static sylvanbdd bddZero () { return upper::bddZero (); }
+      static sylvanbdd bddOne () { return upper::bddOne (); }
 
       bool empty () const {
         return this->isZero ();

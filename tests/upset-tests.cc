@@ -4,27 +4,39 @@
 
 using namespace std::literals;
 
+#include <labels/sylvanbdd.hh>
 #include <labels/abcbdd.hh>
+#include <labels/buddybdd.hh>
 #include <utils/bdd_io.hh>
 
 #include "tests.hh"
 
-auto mmbdd = MBDD::make_master_meta_bdd<labels::abcbdd, MBDD::states_are_ints> ();
+masterbdd global_mbuddy;
+
+
+auto mmbdd = MBDD::make_master_meta_bdd<labels::buddybdd, MBDD::states_are_ints> ();
 
 using mmbdd_t = decltype (mmbdd);
 
 using upset_bdd = upset::upset_adhoc<mmbdd_t>;
 
 int main (int argc, char** argv) {
-  if constexpr (std::is_same_v<mmbdd_t::letter_set_type, labels::sylvanbdd>) {
+  constexpr static auto is_sylvan = std::is_same_v<mmbdd_t::letter_set_type, labels::sylvanbdd>;
+  constexpr static auto is_abc = std::is_same_v<mmbdd_t::letter_set_type, labels::abcbdd>;
+  constexpr static auto is_buddy = std::is_same_v<mmbdd_t::letter_set_type, labels::buddybdd>;
+
+  if constexpr (is_sylvan) {
     // Initialize sylvan
     lace_start(0, 0);
     sylvan::sylvan_set_sizes (1LL<<23, 1LL<<26, 1LL<<23, 1LL<<26);
     sylvan::sylvan_init_package ();
     sylvan::sylvan_init_bdd ();
   }
-  else if constexpr (std::is_same_v<mmbdd_t::letter_set_type, labels::abcbdd>) {
+  else if constexpr (is_abc) {
     utils::abcbdd::init (100, 1 << 20);
+  }
+  else if constexpr (is_buddy) {
+    utils::buddybdd::init (100, 1 << 20);
   }
 
   // Initialize MBDD

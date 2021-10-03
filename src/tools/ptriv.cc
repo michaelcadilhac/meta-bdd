@@ -3,21 +3,11 @@
 #include <fstream>
 #include <queue>
 #include <list>
-
-#include <upset.hh>
-#include <upset/upset_adhoc.hh>
-#include <upset/upset_bdd.hh>
-
-#include <labels/sylvanbdd.hh>
-#include <labels/buddybdd.hh>
+#include <set>
 
 #include "petri_net.hh"
 
-auto mmbdd = MBDD::make_master_meta_bdd<labels::buddybdd, MBDD::states_are_ints> ();
-using mmbdd_t = decltype (mmbdd);
-using upset_bdd = upset::upset_adhoc<mmbdd_t>;
-
-using value_t = upset_bdd::value_type;
+using value_t = ssize_t;
 
 struct transition_view {
     std::vector<value_t> budgets;
@@ -51,26 +41,72 @@ static auto map_to_vec (const petri_net::place_to_weight_t& m, size_t num_places
   return ret;
 }
 
-
 // Debug
 template <typename T>
 std::ostream& operator<< (std::ostream& out, const std::vector<T>& v) {
-  if (!v.empty()) {
-    out << '[';
-    std::ranges::copy(v, std::ostream_iterator<T>(out, ", "));
-    out << "\b\b]";
-  }
-  return out;
+    if (!v.empty()) {
+        out << '[';
+        std::ranges::copy(v, std::ostream_iterator<T>(out, ", "));
+        out << "\b\b]";
+    }
+    return out;
 }
+
+class upset : public std::set<std::vector<value_t>> {
+    using vec_t = std::vector<value_t>;
+  public:
+    bool all_components_geq (const vec_t& v1, const vec_t& v2) {
+      for (size_t i = 0; i < v1.size (); ++i)
+        if (v1[i] < v2[i])
+          return false;
+      return true;
+    }
+
+    upset operator+ (const vec_t& v) const {
+      upset ret;
+      for (auto x : (*this)) {
+        for (size_t i = 0; i < v.size (); ++i)
+          x[i] += v[i];
+        ret.insert (std::move (x));
+      }
+      return ret;
+    }
+
+    upset& operator&= (const vec_t& v) {
+      upset ret;
+      for (auto x : (*this)) {
+        for (size_t i = 0; i < v.size (); ++i)
+          x[i] = std::max (v[i], x[i]);
+        ret.insert (std::move (x));
+      }
+      return *this = ret;
+    }
+
+    upset& operator|= (const upset& other) {
+      this->insert (other.begin (), other.end());
+      return *this;
+    }
+
+    void minimize () {
+      for (auto& x : (*this)) {
+        for (auto&& it_y = this->begin (); it_y != this->end (); /* in-loop */) {
+          if (&x != &(*it_y) and all_components_geq (*it_y, x))
+            it_y = this->erase (it_y);
+          else
+            ++it_y;
+        }
+      }
+    }
+};
 
 static bool backward_coverability (const std::vector<value_t>& init,
                                    std::list<std::vector<value_t>>& targets,
                                    const std::vector<transition_view>& transitions) {
-  auto B = upset_bdd (mmbdd, targets.front ()), Bprime = B;
+  auto B = upset (), Bprime = B;
 
-  targets.pop_front ();
   for (auto&& el : targets)
-    Bprime |= upset_bdd (mmbdd, el);
+    Bprime.insert (el);
+  Bprime.minimize ();
 
   size_t i = 0;
 
@@ -87,6 +123,7 @@ static bool backward_coverability (const std::vector<value_t>& init,
         return true;
       Bprime |= mt;
     }
+    Bprime.minimize ();
   } while (B != Bprime);
 
   return false;
@@ -96,13 +133,6 @@ int main (int argc, char* argv[]) {
   if (argc != 2)
     return 1;
 
-  constexpr static auto is_sylvan = std::is_same_v<mmbdd_t::letter_set_type, labels::sylvanbdd>;
-  constexpr auto is_abc = std::is_same_v<mmbdd_t::letter_set_type, labels::abcbdd>;
-  constexpr static auto is_buddy = std::is_same_v<mmbdd_t::letter_set_type, labels::buddybdd>;
-
-  // Initialize MBDD
-  mmbdd.init ();
-
   try {
     petri_net pnet (argv[1]);
 
@@ -111,20 +141,6 @@ int main (int argc, char* argv[]) {
     auto targets = std::list<decltype (init)> ();
     for (auto&& el : pnet.get_targets ())
       targets.push_back (map_to_vec (el, pnet.num_places ()));
-
-    if constexpr (is_sylvan) {
-      // Initialize sylvan
-      lace_start(0, /* dqsize = */ 1000000);
-      sylvan::sylvan_set_sizes (1LL<<22, 1LL<<26, 1LL<<22, 1LL<<26);
-      sylvan::sylvan_init_package ();
-      sylvan::sylvan_init_bdd ();
-    }
-    else if constexpr (is_abc) {
-      utils::abcbdd::init (pnet.num_places () + 10, 1 << 26);
-    }
-    else if constexpr (is_buddy) {
-      utils::buddybdd::init (pnet.num_places () + 10, 1 << 23);
-    }
 
     if (backward_coverability (init, targets, transitions))
       std::cout << "COVERABLE" << std::endl;

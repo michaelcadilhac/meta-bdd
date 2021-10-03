@@ -4,6 +4,7 @@
 
 namespace labels {
   class abcbdd : public utils::abcbdd {
+      using upper = utils::abcbdd;
     public:
       abcbdd () : utils::abcbdd () {}
       abcbdd (const utils::abcbdd& b) : utils::abcbdd (b) {}
@@ -17,6 +18,11 @@ namespace labels {
       abcbdd operator* (const abcbdd& other) const {
         return utils::abcbdd::operator* (other);
       }
+
+      static abcbdd bddVar (int idx) { return upper::bddVar (idx); }
+      static abcbdd bddZero () { return upper::bddZero (); }
+      static abcbdd bddOne () { return upper::bddOne (); }
+
 
       bool empty () const {
         return this->isZero ();
