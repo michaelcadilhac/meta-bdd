@@ -15,6 +15,7 @@
 
 auto mmbdd = MBDD::make_master_meta_bdd<labels::buddybdd, MBDD::states_are_ints> ();
 using mmbdd_t = decltype (mmbdd);
+
 using upset_bdd = upset::upset_adhoc<mmbdd_t>;
 
 using value_t = upset_bdd::value_type;
@@ -75,7 +76,10 @@ static bool backward_coverability (const std::vector<value_t>& init,
   size_t i = 0;
 
   do {
-    std::cout << "Loop #" << i++ << std::endl;
+    std::cout << "Loop #" << i++
+              << " Bprime size is " << Bprime.mbdd_size ()
+              << std::endl;
+    std::cout << "Bprime is: " << Bprime.get_mbdd () << std::endl;
     B = Bprime;
     for (auto&& t : transitions) {
       std::cout << "Applying transition deltas " << t.backward_deltas << std::endl;

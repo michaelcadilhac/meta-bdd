@@ -88,8 +88,9 @@ namespace MBDD {
       template <typename T = MMBdd>//, std::enable_if_t<std::is_const<T>::value>>
       operator bmeta_bdd<const MMBdd> () const { return bmeta_bdd<const MMBdd> (mmbdd, state); }
 
-      bool accepts (std::span<const Bdd> w) const;
-      bool accepts (std::initializer_list<Bdd> w) const { return accepts (std::span (w)); }
+      bool accepts (std::span<const letter_type> w) const;
+      bool accepts (std::initializer_list<letter_type> w) const { return accepts (std::span (w)); }
+      bool accepts (std::vector<letter_type> w) const           { return accepts (std::span (w)); }
 
       template <typename T>
       bool rejects (T&& t) const { return not accepts (std::forward<T> (t)); }

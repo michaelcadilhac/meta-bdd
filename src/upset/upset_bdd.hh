@@ -79,13 +79,10 @@ namespace upset {
 
         std::cout << "Computing transduction..." << std::endl;
         auto trans = plus_transducer (abs_v, neg, std::vector<bool> (v.size ()));
-        std::cout << "TRANS: " << trans << std::endl;
         std::cout << "Transducting..." << std::endl;
         auto tctd = transduct (trans);
-        std::cout << "TRANS'd: " << tctd.get_mbdd () << std::endl;
         std::cout << "Zero padding..." << std::endl;
         auto pdd = tctd.full_zero_padded ();
-        std::cout << "ZPDD'd: " << pdd.get_mbdd () << std::endl;
         std::cout << "Done." << std::endl;
         return pdd;
       }

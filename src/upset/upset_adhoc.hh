@@ -142,7 +142,29 @@ namespace upset {
         return mbdd;
       }
 
+      std::map<meta_bdd, size_t> sizes;
+      size_t get_mbdd_size (const meta_bdd& m, std::set<meta_bdd>& done) {
+        if (done.contains (m))
+          return 0;
+        auto s = sizes.find (m);
+        if (s != sizes.end ())
+          return s->second;
+        done.insert (m);
+        size_t size = 1;
+        for (auto&& [dest, _] : m.neighbors ())
+          if (dest != m)
+            size += get_mbdd_size (dest, done);
+        sizes[m] = size;
+        return size;
+      }
+
+      size_t mbdd_size ()  {
+        auto done = std::set<meta_bdd> ();
+        return get_mbdd_size (mbdd, done);
+      }
+
       friend std::ostream& operator<< <> (std::ostream& out, const upset_adhoc& v);
+
 
     private:
       master_meta_bdd& mmbdd;

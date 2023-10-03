@@ -3,7 +3,7 @@
 namespace MBDD {
 
   template <typename MMBdd>
-  inline bool bmeta_bdd<MMBdd>::accepts (std::span<const Bdd> w) const {
+  inline bool bmeta_bdd<MMBdd>::accepts (std::span<const letter_type> w) const {
     auto cur_state = state;
     for (auto&& l : w) {
       cur_state = mmbdd.successor (cur_state, l);

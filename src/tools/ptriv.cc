@@ -111,7 +111,12 @@ static bool backward_coverability (const std::vector<value_t>& init,
   size_t i = 0;
 
   do {
-    std::cout << "Loop #" << i++ << std::endl;
+    std::cout << "Loop #" << i++
+              << " Bprime of size " << Bprime.size () << std::endl;
+    std::cout << "Bprime is: ";
+    for (auto&& el : Bprime)
+      std::cout << el << " ";
+    std::cout << std::endl;
     B = Bprime;
     for (auto&& t : transitions) {
       std::cout << "Applying transition deltas " << t.backward_deltas << std::endl;
@@ -123,6 +128,7 @@ static bool backward_coverability (const std::vector<value_t>& init,
         return true;
       Bprime |= mt;
     }
+    std::cout << "Minimizing..." << std::endl;
     Bprime.minimize ();
   } while (B != Bprime);
 
